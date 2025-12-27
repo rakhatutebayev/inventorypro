@@ -1,0 +1,62 @@
+#!/usr/bin/expect -f
+
+set timeout 600
+set server "root@ams.it-uae.com"
+set password "hVjrf8Ux"
+
+spawn ssh -o StrictHostKeyChecking=no $server
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "Permission denied" {
+        puts "❌ Ошибка авторизации"
+        exit 1
+    }
+    "# " {
+        send "cd /var/www\r"
+        expect "# "
+        
+        send "docker ps -aq | xargs -r docker stop 2>/dev/null || true\r"
+        expect "# "
+        
+        send "docker ps -aq | xargs -r docker rm 2>/dev/null || true\r"
+        expect "# "
+        
+        send "rm -rf inventorypro\r"
+        expect "# "
+        
+        send "command -v git >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y git -qq)\r"
+        expect "# "
+        
+        send "git clone https://github.com/rakhatu/inventorypro.git inventorypro 2>&1\r"
+        expect "# "
+        
+        send "cd inventorypro\r"
+        expect "# "
+        
+        send "cat > .env << 'ENVEOF'\rPOSTGRES_PASSWORD=\$(openssl rand -hex 16)\rSECRET_KEY=\$(openssl rand -hex 32)\rDEBUG=False\rENVEOF\r"
+        expect "# "
+        
+        send "docker-compose -f docker-compose.prod.yml up -d --build\r"
+        expect "# "
+        
+        send "sleep 50\r"
+        expect "# "
+        
+        send "docker-compose -f docker-compose.prod.yml exec -T backend alembic upgrade head\r"
+        expect "# "
+        
+        send "docker-compose -f docker-compose.prod.yml exec -T backend python << 'PYEOF'\rfrom app.database import SessionLocal\rfrom app.models.user import User, UserRole\rfrom app.models.company import Company\rfrom app.models.device_type import DeviceType\rfrom app.models.warehouse import Warehouse\rfrom app.models.employee import Employee\rfrom app.core.security import get_password_hash\rdb = SessionLocal()\rtry:\r    if not db.query(User).filter(User.username == 'admin').first():\r        db.add(User(username='admin', email='admin@example.com', hashed_password=get_password_hash('admin123'), role=UserRole.admin))\r    if not db.query(Company).filter(Company.code == 'WWP').first():\r        db.add(Company(code='WWP', name='World Wide Products'))\r    for code, name in [('01', 'Monitor'), ('02', 'Laptop'), ('03', 'Phone')]:\r        if not db.query(DeviceType).filter(DeviceType.code == code).first():\r            db.add(DeviceType(code=code, name=name))\r    if not db.query(Warehouse).filter(Warehouse.name == 'Main Warehouse').first():\r        db.add(Warehouse(name='Main Warehouse', address='123 Main St'))\r    if not db.query(Employee).filter(Employee.phone == '001').first():\r        db.add(Employee(name='John Doe', phone='001', position='Manager'))\r    db.commit()\r    print('✅ Done')\rexcept Exception as e:\r    db.rollback()\r    print(f'Error: {e}')\rPYEOF\r"
+        expect "# "
+        
+        send "docker-compose -f docker-compose.prod.yml ps\r"
+        expect "# "
+        
+        send "exit\r"
+        expect eof
+    }
+}
+
