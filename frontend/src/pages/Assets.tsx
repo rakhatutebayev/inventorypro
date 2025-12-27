@@ -127,41 +127,40 @@ export default function Assets() {
         <div className="text-center py-8 text-gray-500">No assets found</div>
       ) : (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-            <div className="grid grid-cols-10 gap-2 text-xs font-semibold text-gray-600 uppercase tracking-wide">
-              <div className="col-span-2">Inventory</div>
-              <div className="col-span-3">Vendor + Model</div>
-              <div className="col-span-3">Serial</div>
-              <div className="col-span-2">Location</div>
-            </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-max w-full table-auto">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  <th className="px-4 py-2 text-left whitespace-nowrap">Inventory</th>
+                  <th className="px-4 py-2 text-left whitespace-nowrap">Vendor + Model</th>
+                  <th className="px-4 py-2 text-left whitespace-nowrap">Serial</th>
+                  <th className="px-4 py-2 text-left whitespace-nowrap">Location</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {assets.map((asset) => (
+                  <tr
+                    key={asset.id}
+                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    onClick={() => handleAssetClick(asset)}
+                  >
+                    <td className="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
+                      {asset.inventory_number}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                      {asset.vendor} {asset.model}
+                    </td>
+                    <td className="px-4 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">
+                      {asset.serial_number}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                      {getLocationName(asset.location_type, asset.location_id)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <ul className="divide-y divide-gray-200">
-            {assets.map((asset) => (
-              <li
-                key={asset.id}
-                className="px-4 py-2 hover:bg-gray-50 transition-colors cursor-pointer"
-                onClick={() => handleAssetClick(asset)}
-              >
-                <div className="grid grid-cols-10 gap-2 items-center">
-                  <div className="col-span-2 text-left font-medium text-gray-900 truncate" title={asset.inventory_number}>
-                    {asset.inventory_number}
-                  </div>
-
-                  <div className="col-span-3 text-sm text-gray-700 truncate" title={`${asset.vendor} ${asset.model}`}>
-                    {asset.vendor} {asset.model}
-                  </div>
-
-                  <div className="col-span-3 text-sm font-mono text-gray-600 truncate" title={asset.serial_number}>
-                    {asset.serial_number}
-                  </div>
-
-                  <div className="col-span-2 text-sm text-gray-700 truncate" title={getLocationName(asset.location_type, asset.location_id)}>
-                    {getLocationName(asset.location_type, asset.location_id)}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
         </div>
       )}
 
