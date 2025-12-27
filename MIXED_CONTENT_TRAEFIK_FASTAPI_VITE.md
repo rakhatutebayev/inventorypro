@@ -1,70 +1,84 @@
-# Mixed Content (HTTPS page → HTTP requests): what happened and how to avoid it
+# Mixed Content (HTTPS страница → HTTP запросы): что было и как не допустить в новых проектах
 
-This document captures **two real production issues** we hit on `ams.it-uae.com` and the **exact fixes**.
+Ниже зафиксированы **2 реальные причины Mixed Content**, которые поймали в продакшене на `ams.it-uae.com`, и **точные исправления**.  
+В конце есть **готовые формулировки для новых ТЗ** (требования + критерии приёмки).
 
-## 1) Vite `dist/assets` conflicts with React route `/assets`
+## Причина №1: конфликт роутов SPA `/assets` и папки статики Vite `dist/assets`
 
-### Symptom
-- Opening `https://<domain>/assets` causes redirects to `http://<domain>:3000/assets/`
-- Browser shows Mixed Content errors
+### Симптомы
+- При открытии `https://<домен>/assets` происходят редиректы на `http://<домен>:3000/assets/`
+- В консоли браузера: `Mixed Content` (HTTPS страница пытается загрузить HTTP ресурсы)
 
-### Root cause
-Vite builds static files into `dist/assets` by default.  
-If your React Router has a page route **`/assets`**, then inside the frontend container Nginx sees:
-- `/usr/share/nginx/html/assets` as a real directory
-- Requests to `/assets` can trigger a redirect to `/assets/`
-- In our case the redirect location became an absolute **HTTP** URL (Mixed Content).
+### Корень проблемы
+Vite по умолчанию складывает статику в `dist/assets`.  
+Если в приложении есть SPA‑роут **`/assets`**, то внутри контейнера фронта Nginx видит:
+- `/usr/share/nginx/html/assets` как **реальную директорию**
+- запрос к `/assets` может приводить к редиректу на `/assets/`
+- редирект может стать **абсолютным HTTP URL** → Mixed Content
 
-### Fix
-Move Vite build assets directory away from `/assets`.
+### Исправление
+Унести папку статики Vite из `/assets` в другой префикс (например `/static`).
 
-We changed `frontend/vite.config.ts`:
-- `build.assetsDir: 'static'`
+Реализация (Vite):
+- `frontend/vite.config.ts` → `build.assetsDir: 'static'`
 
-After build, the HTML points to `/static/...` instead of `/assets/...`.
+Ожидаемый результат:
+- В `index.html` ссылки на ассеты будут `/static/...`, а не `/assets/...`
 
-## 2) FastAPI/Uvicorn redirects were generated as `http://...` behind Traefik
+## Причина №2: backend (FastAPI/Uvicorn) выдавал редиректы на `http://...` за Traefik
 
-### Symptom
-Frontend calls:
-- `https://<domain>/api/v1/assets?search=&limit=100`
+### Симптомы
+Фронтенд делает запрос:
+- `https://<домен>/api/v1/assets?search=&limit=100` (без слеша в конце)
 
-Backend responded:
-- `HTTP 307` with `Location: http://<domain>/api/v1/assets/?...`
+Backend отвечал:
+- `HTTP 307` с заголовком `Location: http://<домен>/api/v1/assets/?...`
 
-Browser blocks it as Mixed Content because the redirect forces HTTP.
+Браузер блокирует такой переход как Mixed Content (HTTPS → HTTP).
 
-### Root cause
-Starlette/FastAPI generates redirects (e.g., adding a trailing slash) based on the request scheme.
-Behind a reverse proxy (Traefik), the real scheme is provided via headers like:
+### Корень проблемы
+FastAPI/Starlette генерируют редиректы (например, добавляя trailing slash) исходя из схемы запроса.  
+За reverse‑proxy (Traefik) реальная схема приходит в заголовках:
 - `X-Forwarded-Proto: https`
 
-If Uvicorn does **not** trust proxy headers, it thinks the scheme is `http` and builds redirect URLs with `http://...`.
+Если Uvicorn **не доверяет** proxy‑заголовкам, он считает схему `http` и строит редирект на `http://...`.
 
-### Fix
-Run Uvicorn with proxy headers enabled (and allow Traefik IPs):
-
+### Исправление
+Запускать Uvicorn с включёнными proxy‑заголовками:
 - `--proxy-headers`
-- `--forwarded-allow-ips=*`
+- `--forwarded-allow-ips=*` (или список IP вашего reverse‑proxy)
 
-We applied this in `docker-compose.prod.yml` for the `backend` service command.
+Реализация (docker-compose):
+- `docker-compose.prod.yml` → для `backend` в `command` добавлены флаги `--proxy-headers --forwarded-allow-ips=*`
 
-### Quick verification
-Run:
+### Быстрая проверка (после фикса)
 
-- `curl -sv 'https://<domain>/api/v1/assets?search=&limit=1' 2>&1 | grep -i location`
+Команда:
+- `curl -sv 'https://<домен>/api/v1/assets?search=&limit=1' 2>&1 | grep -i location`
 
-Expected **after fix**:
-- `Location: https://<domain>/api/v1/assets/?...`
+Ожидаемо **после фикса**:
+- `Location: https://<домен>/api/v1/assets/?...` (только HTTPS)
 
-## Recommended checklist for new projects
+## Готовые формулировки для новых ТЗ (рекомендуется вставлять как есть)
 
-- **Avoid route collisions**: do not use React routes that match your static folder name (`/assets` is the common one).
-  - Prefer Vite `assetsDir: 'static'` (or any non-route prefix).
-- **If behind Traefik/Nginx/Cloudflare**:
-  - Enable Uvicorn `--proxy-headers`
-  - Set `--forwarded-allow-ips=*` (or restrict to your proxy IPs)
-- **When you see Mixed Content**:
-  - Check if the response is a **redirect** to `http://...` (Network tab → Response Headers → Location).
+### Требование 1 (Frontend): запрет конфликта SPA‑роутов со статикой
+- **Требование**: “Статические ассеты фронтенда не должны публиковаться под URL‑префиксами, пересекающимися с роутами SPA.”
+- **Реализация**: “Для Vite обязательно задавать `build.assetsDir` отличным от `assets` (например `static`).”
+- **Критерии приёмки**:
+  - `GET https://<домен>/assets` возвращает `200` без редиректа на `http://<домен>:<порт>/...`
+  - В HTML/Network ассеты грузятся из `/static/*`, а не `/assets/*`
+
+### Требование 2 (Backend): корректная схема HTTPS за Traefik (proxy headers)
+- **Требование**: “Backend за reverse‑proxy обязан корректно определять схему запроса (https) по `X-Forwarded-Proto` и генерировать редиректы только на HTTPS.”
+- **Реализация**: “Uvicorn должен быть запущен с `--proxy-headers` и `--forwarded-allow-ips=*` (или списком IP reverse‑proxy).”
+- **Критерии приёмки**:
+  - `curl -I 'https://<домен>/api/v1/assets?search=&limit=1'` не содержит `Location: http://...`
+  - При наличии редиректа (например из‑за trailing slash) `Location` всегда `https://...`
+
+### Требование 3 (Безопасность): отсутствие Mixed Content в продакшене
+- **Требование**: “В продакшене запрещены HTTP запросы со страниц, загруженных по HTTPS (Mixed Content).”
+- **Критерии приёмки**:
+  - В DevTools Console отсутствуют ошибки `Mixed Content`
+  - В Network отсутствуют запросы к `http://<домен>/...`
 
 
