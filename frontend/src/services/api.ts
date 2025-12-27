@@ -25,6 +25,8 @@ const api: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Важно: не используем allowAbsoluteUrls, чтобы гарантировать использование относительных путей
+  // axios будет использовать window.location.origin, который будет https:// если страница загружена через HTTPS
 });
 
 // Request interceptor - исправляем URL и добавляем токен
@@ -77,6 +79,25 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // ФИНАЛЬНАЯ ПРОВЕРКА: Проверяем, что baseURL точно относительный путь
+    // Это защита на случай, если axios как-то изменил baseURL
+    if (config.baseURL && !config.baseURL.startsWith('/')) {
+      // Если baseURL не начинается с /, значит это может быть абсолютный URL
+      // Принудительно устанавливаем относительный путь
+      if (config.baseURL.includes('://')) {
+        try {
+          const url = new URL(config.baseURL);
+          config.baseURL = url.pathname || '/api/v1';
+        } catch (e) {
+          config.baseURL = '/api/v1';
+        }
+      } else {
+        // Если это не абсолютный URL и не начинается с /, добавляем /
+        config.baseURL = '/' + config.baseURL.replace(/^\/+/, '');
+      }
+    }
+    
     return config;
   },
   (error) => {
