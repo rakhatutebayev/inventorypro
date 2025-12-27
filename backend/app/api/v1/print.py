@@ -40,6 +40,29 @@ def normalize_label_size(size: str) -> str:
     return size
 
 
+def truncate_to_width(c: canvas.Canvas, text: str, font_name: str, font_size: int, max_width: float) -> str:
+    """Обрезает строку с '...' так, чтобы она гарантированно помещалась по ширине."""
+    if c.stringWidth(text, font_name, font_size) <= max_width:
+        return text
+
+    ellipsis = "..."
+    if c.stringWidth(ellipsis, font_name, font_size) > max_width:
+        return ""  # совсем некуда
+
+    # Бинарный поиск по длине
+    lo, hi = 0, len(text)
+    best = ellipsis
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        candidate = text[:mid] + ellipsis
+        if c.stringWidth(candidate, font_name, font_size) <= max_width:
+            best = candidate
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
 class LabelRequest(BaseModel):
     asset_id: int
     size: Literal["30x20", "40x30", "20x30", "30x40"] = "30x20"
@@ -70,68 +93,82 @@ def generate_label_pdf(asset: Asset, size: str = "30x20") -> BytesIO:
     
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=(width, height))
-    
-    # Левый блок - QR код (50% ширины)
-    qr_width = width * 0.5
-    qr_height = height
-    
-    # Генерируем QR код с inventory_number
+
+    # Layout
+    padding = 1.5 * mm
+
+    # Левый блок - QR код (30% ширины по ТЗ)
+    qr_block_w = width * 0.30
+    qr_block_h = height
+
+    # Правая часть - текст (Vendor/Model, SN, INV) без переноса
+    text_block_x = qr_block_w + padding
+    text_block_w = width - qr_block_w - 2 * padding
+
+    # Генерируем QR код (данные = inventory_number)
     qr_data = asset.inventory_number
     qr_img_io = generate_qr_code(qr_data)
     
-    # Размещаем QR код в левом блоке
+    # Размещаем QR код в левом блоке (квадрат внутри блока)
+    qr_size = min(qr_block_w - 2 * padding, qr_block_h - 2 * padding)
+    qr_size = max(qr_size, 1 * mm)
+    qr_x = padding + (qr_block_w - 2 * padding - qr_size) / 2
+    qr_y = padding + (qr_block_h - 2 * padding - qr_size) / 2
+
     qr_img = ImageReader(qr_img_io)
-    c.drawImage(qr_img, 0, 0, width=qr_width, height=qr_height, preserveAspectRatio=True)
-    
-    # Правый блок - текст (50% ширины)
-    text_x = qr_width + 2*mm  # Небольшой отступ
-    text_y = height - 3*mm    # Отступ сверху
-    text_width = width - qr_width - 4*mm
-    
-    # Font sizes based on label size (canonical)
+
+    c.drawImage(qr_img, qr_x, qr_y, width=qr_size, height=qr_size, preserveAspectRatio=True, anchor="c")
+
+    # Текст без переноса: Vendor/Model, SN, INV
+    vendor_model = f"{asset.vendor} {asset.model}".strip()
+    sn_text = f"SN: {asset.serial_number}".strip()
+    inv_text = f"INV: {asset.inventory_number}".strip()
+
+    # Подбор размеров шрифта, чтобы всё гарантированно помещалось (без переноса)
     if canonical_size == "30x20":
-        title_font_size = 8
-        text_font_size = 6
+        title_max, title_min = 9, 6
+        text_max, text_min = 7, 5
+        line_gap = 1.0 * mm
     else:  # 40x30
-        title_font_size = 12
-        text_font_size = 9
-    
-    # Vendor + Model
-    vendor_model = f"{asset.vendor} {asset.model}"
-    c.setFont("Helvetica-Bold", title_font_size)
-    # Разбиваем длинные строки
-    lines = []
-    words = vendor_model.split()
-    current_line = ""
-    for word in words:
-        test_line = f"{current_line} {word}" if current_line else word
-        if c.stringWidth(test_line, "Helvetica-Bold", title_font_size) < text_width:
-            current_line = test_line
-        else:
-            if current_line:
-                lines.append(current_line)
-            current_line = word
-    if current_line:
-        lines.append(current_line)
-    
-    y_pos = text_y
-    for line in lines[:2]:  # Максимум 2 строки для Vendor+Model
-        c.drawString(text_x, y_pos, line[:30])  # Обрезаем если слишком длинное
-        y_pos -= title_font_size + 2*mm
-    
-    # Serial Number
-    y_pos -= 2*mm
-    c.setFont("Helvetica", text_font_size)
-    serial_text = f"Serial: {asset.serial_number}"
-    # Обрезаем если слишком длинное
-    if c.stringWidth(serial_text, "Helvetica", text_font_size) > text_width:
-        serial_text = serial_text[:25] + "..."
-    c.drawString(text_x, y_pos, serial_text)
-    
-    # Inventory Number
-    y_pos -= text_font_size + 1*mm
-    inv_text = f"INV: {asset.inventory_number}"
-    c.drawString(text_x, y_pos, inv_text)
+        title_max, title_min = 13, 9
+        text_max, text_min = 10, 7
+        line_gap = 1.2 * mm
+
+    title_font = "Helvetica-Bold"
+    text_font = "Helvetica"
+
+    title_size = title_max
+    text_size = text_max
+
+    # Пробуем уменьшать шрифты, пока не влезем по высоте (ширину добьём truncation'ом)
+    max_text_area_h = height - 2 * padding
+    while True:
+        needed_h = title_size + line_gap + text_size + line_gap + text_size
+        if needed_h <= max_text_area_h:
+            break
+        if title_size > title_min:
+            title_size -= 1
+        if text_size > text_min:
+            text_size -= 1
+        if title_size == title_min and text_size == text_min:
+            break
+
+    # Теперь гарантируем ширину через обрезание (без переноса)
+    vendor_model_fit = truncate_to_width(c, vendor_model, title_font, title_size, text_block_w)
+    sn_fit = truncate_to_width(c, sn_text, text_font, text_size, text_block_w)
+    inv_fit = truncate_to_width(c, inv_text, text_font, text_size, text_block_w)
+
+    # Печать текста (сверху вниз)
+    y = height - padding - title_size
+    c.setFont(title_font, title_size)
+    c.drawString(text_block_x, y, vendor_model_fit)
+
+    y -= (line_gap + text_size)
+    c.setFont(text_font, text_size)
+    c.drawString(text_block_x, y, sn_fit)
+
+    y -= (line_gap + text_size)
+    c.drawString(text_block_x, y, inv_fit)
     
     c.save()
     buffer.seek(0)
