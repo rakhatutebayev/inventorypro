@@ -32,6 +32,7 @@ class AssetCreate(AssetBase):
 
 
 class AssetUpdate(BaseModel):
+    serial_number: Optional[str] = Field(None, description="Serial number (unique)")
     vendor: Optional[str] = None
     model: Optional[str] = None
     location_type: Optional[LocationType] = None

@@ -179,6 +179,14 @@ def update_asset(
                     detail=f"Warehouse with id {asset_in.location_id} not found"
                 )
     
+    # Validate serial number uniqueness if provided
+    if asset_in.serial_number is not None and asset_in.serial_number != asset.serial_number:
+        if db.query(Asset).filter(Asset.serial_number == asset_in.serial_number, Asset.id != asset.id).first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Serial number already exists"
+            )
+
     # Update fields
     update_data = asset_in.dict(exclude_unset=True)
     for field, value in update_data.items():
