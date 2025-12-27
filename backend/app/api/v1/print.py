@@ -207,6 +207,8 @@ def generate_label_pdf(asset: Asset, size: str = "30x20") -> BytesIO:
     c.setLineWidth(0.35 * mm)
     c.setFillColor(colors.white)
     c.roundRect(x0, y0, content_w, content_h, corner_radius, stroke=1, fill=0)
+    # Важно: после рамки возвращаем цвет заливки в чёрный, иначе текст будет белым на белом
+    c.setFillColor(colors.black)
 
     # Левый блок QR ~40% ширины
     qr_block_w = content_w * 0.40
