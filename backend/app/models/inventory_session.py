@@ -14,5 +14,15 @@ class InventorySession(Base):
 
     # Relationships
     results = relationship("InventoryResult", back_populates="session", cascade="all, delete-orphan")
+    device_type_scopes = relationship(
+        "InventorySessionDeviceType",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def device_type_codes(self):
+        """Scope for inventory session. Empty list means 'all device types'."""
+        return [s.device_type_code for s in (self.device_type_scopes or [])]
 
 

@@ -1,8 +1,8 @@
 import api from './api';
-import { InventorySession, InventoryResult } from '../types';
+import { InventorySession, InventoryResult, Asset } from '../types';
 
 export const inventoryService = {
-  async createSession(data: { description?: string }): Promise<InventorySession> {
+  async createSession(data: { description?: string; device_type_codes?: string[] }): Promise<InventorySession> {
     const response = await api.post<InventorySession>('/inventory/sessions', data);
     return response.data;
   },
@@ -34,6 +34,25 @@ export const inventoryService = {
 
   async getResults(sessionId: number): Promise<InventoryResult[]> {
     const response = await api.get<InventoryResult[]>(`/inventory/sessions/${sessionId}/results`);
+    return response.data;
+  },
+
+  async getProgress(sessionId: number): Promise<{ session_id: number; checked: number; total: number; remaining: number }> {
+    const response = await api.get<{ session_id: number; checked: number; total: number; remaining: number }>(
+      `/inventory/sessions/${sessionId}/progress`
+    );
+    return response.data;
+  },
+
+  async getRemaining(sessionId: number): Promise<Asset[]> {
+    const response = await api.get<Asset[]>(`/inventory/sessions/${sessionId}/remaining`);
+    return response.data;
+  },
+
+  async getChecked(sessionId: number): Promise<Array<{ id: number; found: boolean; confirmed_at: string; asset: Asset }>> {
+    const response = await api.get<Array<{ id: number; found: boolean; confirmed_at: string; asset: Asset }>>(
+      `/inventory/sessions/${sessionId}/checked`
+    );
     return response.data;
   },
 };

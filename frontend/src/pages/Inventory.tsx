@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoryService } from '../services/inventory';
 import { assetsService } from '../services/assets';
-import { LocationType } from '../types';
+import { referencesService } from '../services/references';
+import { Asset, LocationType } from '../types';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
@@ -13,8 +14,16 @@ export default function Inventory() {
   const [scanNumber, setScanNumber] = useState('');
   const [isNewSessionModalOpen, setIsNewSessionModalOpen] = useState(false);
   const [sessionDescription, setSessionDescription] = useState('');
+  const [selectedDeviceTypes, setSelectedDeviceTypes] = useState<string[]>([]);
+  const [isListModalOpen, setIsListModalOpen] = useState(false);
+  const [listMode, setListMode] = useState<'remaining' | 'checked'>('remaining');
 
   const queryClient = useQueryClient();
+
+  const { data: deviceTypes = [] } = useQuery({
+    queryKey: ['device-types'],
+    queryFn: () => referencesService.getDeviceTypes(),
+  });
 
   // Fetch sessions
   const { data: sessions = [] } = useQuery({
@@ -36,6 +45,24 @@ export default function Inventory() {
     enabled: !!currentSessionId,
   });
 
+  const { data: progress } = useQuery({
+    queryKey: ['inventory-progress', currentSessionId],
+    queryFn: () => inventoryService.getProgress(currentSessionId!),
+    enabled: !!currentSessionId,
+  });
+
+  const { data: remainingAssets = [] } = useQuery({
+    queryKey: ['inventory-remaining', currentSessionId],
+    queryFn: () => inventoryService.getRemaining(currentSessionId!),
+    enabled: !!currentSessionId && isListModalOpen && listMode === 'remaining',
+  });
+
+  const { data: checkedItems = [] } = useQuery({
+    queryKey: ['inventory-checked', currentSessionId],
+    queryFn: () => inventoryService.getChecked(currentSessionId!),
+    enabled: !!currentSessionId && isListModalOpen && listMode === 'checked',
+  });
+
   // Scan asset
   const { data: scannedAsset, refetch: scanAsset } = useQuery({
     queryKey: ['scan-asset', scanNumber],
@@ -44,12 +71,13 @@ export default function Inventory() {
   });
 
   const createSessionMutation = useMutation({
-    mutationFn: (data: { description?: string }) => inventoryService.createSession(data),
+    mutationFn: (data: { description?: string; device_type_codes?: string[] }) => inventoryService.createSession(data),
     onSuccess: (session) => {
       queryClient.invalidateQueries({ queryKey: ['inventory-sessions'] });
       setCurrentSessionId(session.id);
       setIsNewSessionModalOpen(false);
       setSessionDescription('');
+      setSelectedDeviceTypes([]);
     },
   });
 
@@ -72,6 +100,9 @@ export default function Inventory() {
     }) => inventoryService.addResult(data.session_id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-results', currentSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-progress', currentSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-remaining', currentSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-checked', currentSessionId] });
       setScanNumber('');
       queryClient.removeQueries({ queryKey: ['scan-asset'] });
     },
@@ -106,7 +137,10 @@ export default function Inventory() {
   };
 
   const handleStartSession = () => {
-    createSessionMutation.mutate({ description: sessionDescription || undefined });
+    createSessionMutation.mutate({
+      description: sessionDescription || undefined,
+      device_type_codes: selectedDeviceTypes.length > 0 ? selectedDeviceTypes : undefined,
+    });
   };
 
   const handleCompleteSession = () => {
@@ -175,11 +209,32 @@ export default function Inventory() {
                   Started: {new Date(currentSession.started_at).toLocaleString()}
                 </div>
                 <div className="text-sm text-gray-500 mt-1">
-                  Checked: {results.length} assets
+                  Checked: {progress ? progress.checked : results.length} / {progress ? progress.total : '—'} (Remaining: {progress ? progress.remaining : '—'})
                 </div>
               </div>
               <Button variant="danger" onClick={handleCompleteSession}>
                 Complete Session
+              </Button>
+            </div>
+
+            <div className="flex gap-2 mb-4">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setListMode('remaining');
+                  setIsListModalOpen(true);
+                }}
+              >
+                Remaining
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setListMode('checked');
+                  setIsListModalOpen(true);
+                }}
+              >
+                Checked
               </Button>
             </div>
 
@@ -222,6 +277,12 @@ export default function Inventory() {
                   </div>
                 </div>
               </Card>
+            )}
+
+            {addResultMutation.isError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+                {(addResultMutation.error as any)?.response?.data?.detail || 'Failed to add result'}
+              </div>
             )}
 
             {/* Results List */}
@@ -268,6 +329,7 @@ export default function Inventory() {
         onClose={() => {
           setIsNewSessionModalOpen(false);
           setSessionDescription('');
+          setSelectedDeviceTypes([]);
         }}
         title="New Inventory Session"
         size="md"
@@ -279,6 +341,40 @@ export default function Inventory() {
             value={sessionDescription}
             onChange={(e) => setSessionDescription(e.target.value)}
           />
+
+          <div>
+            <div className="text-sm font-medium text-gray-700 mb-2">Device types to inventory</div>
+            <div className="space-y-2 max-h-48 overflow-auto border border-gray-200 rounded-md p-3">
+              {deviceTypes.length === 0 ? (
+                <div className="text-sm text-gray-500">No device types</div>
+              ) : (
+                deviceTypes.map((dt) => {
+                  const checked = selectedDeviceTypes.includes(dt.code);
+                  return (
+                    <label key={dt.id} className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedDeviceTypes([...selectedDeviceTypes, dt.code]);
+                          } else {
+                            setSelectedDeviceTypes(selectedDeviceTypes.filter((c) => c !== dt.code));
+                          }
+                        }}
+                      />
+                      <span className="font-medium">{dt.code}</span>
+                      <span className="text-gray-600">{dt.name}</span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              If you select nothing, inventory will include <span className="font-medium">all device types</span>.
+            </div>
+          </div>
+
           <Button
             onClick={handleStartSession}
             variant="primary"
@@ -287,6 +383,54 @@ export default function Inventory() {
           >
             {createSessionMutation.isPending ? 'Creating...' : 'Start Session'}
           </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isListModalOpen}
+        onClose={() => setIsListModalOpen(false)}
+        title={listMode === 'remaining' ? 'Remaining to Check' : 'Checked'}
+        size="lg"
+      >
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-max w-full table-auto">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  {listMode === 'checked' && <th className="px-4 py-2 text-left whitespace-nowrap">Status</th>}
+                  {listMode === 'checked' && <th className="px-4 py-2 text-left whitespace-nowrap">Date</th>}
+                  <th className="px-4 py-2 text-left whitespace-nowrap">Inventory</th>
+                  <th className="px-4 py-2 text-left whitespace-nowrap">Vendor + Model</th>
+                  <th className="px-4 py-2 text-left whitespace-nowrap">Serial</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {listMode === 'remaining'
+                  ? (remainingAssets as Asset[]).map((a) => (
+                      <tr key={a.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">{a.inventory_number}</td>
+                        <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{a.vendor} {a.model}</td>
+                        <td className="px-4 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">{a.serial_number}</td>
+                      </tr>
+                    ))
+                  : checkedItems.map((it) => (
+                      <tr key={it.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 text-xs whitespace-nowrap">
+                          <span className={`px-2 py-1 rounded ${it.found ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {it.found ? 'Found' : 'Not Found'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                          {new Date(it.confirmed_at).toLocaleDateString('ru-RU')}
+                        </td>
+                        <td className="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">{it.asset.inventory_number}</td>
+                        <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{it.asset.vendor} {it.asset.model}</td>
+                        <td className="px-4 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">{it.asset.serial_number}</td>
+                      </tr>
+                    ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </Modal>
     </div>

@@ -76,6 +76,7 @@ export interface InventorySession {
   started_at: string;
   completed_at?: string;
   description?: string;
+  device_type_codes?: string[];
 }
 
 export interface InventoryResult {
