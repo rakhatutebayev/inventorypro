@@ -26,7 +26,7 @@ export default function Assets() {
     setIsModalOpen(true);
   };
 
-  const handlePrint = async (assetId: number, size: '20x30' | '30x40') => {
+  const handlePrint = async (assetId: number, size: '30x20' | '40x30') => {
     await printService.downloadLabel(assetId, size);
     setIsPrintModalOpen(false);
   };
@@ -160,16 +160,16 @@ export default function Assets() {
               </label>
               <div className="flex gap-2">
                 <button
-                  onClick={() => handlePrint(selectedAsset.id, '20x30')}
+                  onClick={() => handlePrint(selectedAsset.id, '30x20')}
                   className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
                 >
-                  20x30 mm
+                  30x20 mm
                 </button>
                 <button
-                  onClick={() => handlePrint(selectedAsset.id, '30x40')}
+                  onClick={() => handlePrint(selectedAsset.id, '40x30')}
                   className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
                 >
-                  30x40 mm
+                  40x30 mm
                 </button>
               </div>
             </div>

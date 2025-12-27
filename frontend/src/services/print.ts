@@ -1,14 +1,14 @@
 import api from './api';
 
 export const printService = {
-  async generateLabel(assetId: number, size: '20x30' | '30x40' = '20x30'): Promise<Blob> {
+  async generateLabel(assetId: number, size: '30x20' | '40x30' = '30x20'): Promise<Blob> {
     const response = await api.get(`/print/label/${assetId}/${size}`, {
       responseType: 'blob',
     });
     return response.data;
   },
 
-  async downloadLabel(assetId: number, size: '20x30' | '30x40' = '20x30'): Promise<void> {
+  async downloadLabel(assetId: number, size: '30x20' | '40x30' = '30x20'): Promise<void> {
     const blob = await this.generateLabel(assetId, size);
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');

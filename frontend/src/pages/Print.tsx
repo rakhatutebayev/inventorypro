@@ -8,7 +8,7 @@ import Card from '../components/common/Card';
 
 export default function Print() {
   const [inventoryNumber, setInventoryNumber] = useState('');
-  const [selectedSize, setSelectedSize] = useState<'20x30' | '30x40'>('20x30');
+  const [selectedSize, setSelectedSize] = useState<'30x20' | '40x30'>('30x20');
 
   const { data: asset, refetch, isLoading } = useQuery({
     queryKey: ['asset', inventoryNumber],
@@ -51,24 +51,24 @@ export default function Print() {
           </label>
           <div className="flex gap-2">
             <button
-              onClick={() => setSelectedSize('20x30')}
+              onClick={() => setSelectedSize('30x20')}
               className={`flex-1 px-4 py-2 rounded-md border ${
-                selectedSize === '20x30'
+                selectedSize === '30x20'
                   ? 'bg-primary-600 text-white border-primary-600'
                   : 'bg-white text-gray-700 border-gray-300'
               }`}
             >
-              20x30 mm
+              30x20 mm
             </button>
             <button
-              onClick={() => setSelectedSize('30x40')}
+              onClick={() => setSelectedSize('40x30')}
               className={`flex-1 px-4 py-2 rounded-md border ${
-                selectedSize === '30x40'
+                selectedSize === '40x30'
                   ? 'bg-primary-600 text-white border-primary-600'
                   : 'bg-white text-gray-700 border-gray-300'
               }`}
             >
-              30x40 mm
+              40x30 mm
             </button>
           </div>
         </div>

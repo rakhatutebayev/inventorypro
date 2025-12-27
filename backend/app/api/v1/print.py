@@ -14,16 +14,35 @@ from typing import Literal
 
 router = APIRouter()
 
-# Размеры наклеек в мм
+# Размеры наклеек (ширина x высота) в мм.
+# Важно: по ТЗ ширина должна быть больше высоты (альбомная ориентация):
+# - 30x20
+# - 40x30
+#
+# Для обратной совместимости поддерживаем старые значения "20x30" и "30x40",
+# но они маппятся на новые альбомные форматы.
 LABEL_SIZES = {
-    "20x30": (20*mm, 30*mm),
-    "30x40": (30*mm, 40*mm),
+    # Canonical (landscape)
+    "30x20": (30 * mm, 20 * mm),
+    "40x30": (40 * mm, 30 * mm),
+    # Backward-compatible aliases
+    "20x30": (30 * mm, 20 * mm),  # раньше было "20x30" (портрет), теперь печатаем как 30x20
+    "30x40": (40 * mm, 30 * mm),  # раньше было "30x40" (портрет), теперь печатаем как 40x30
 }
+
+
+def normalize_label_size(size: str) -> str:
+    """Нормализует размер наклейки к каноническому формату."""
+    if size == "20x30":
+        return "30x20"
+    if size == "30x40":
+        return "40x30"
+    return size
 
 
 class LabelRequest(BaseModel):
     asset_id: int
-    size: Literal["20x30", "30x40"] = "20x30"
+    size: Literal["30x20", "40x30", "20x30", "30x40"] = "30x20"
 
 
 def generate_qr_code(data: str) -> BytesIO:
@@ -44,9 +63,10 @@ def generate_qr_code(data: str) -> BytesIO:
     return img_io
 
 
-def generate_label_pdf(asset: Asset, size: str = "20x30") -> BytesIO:
+def generate_label_pdf(asset: Asset, size: str = "30x20") -> BytesIO:
     """Генерирует PDF наклейку для актива"""
-    width, height = LABEL_SIZES[size]
+    canonical_size = normalize_label_size(size)
+    width, height = LABEL_SIZES[canonical_size]
     
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=(width, height))
@@ -68,11 +88,11 @@ def generate_label_pdf(asset: Asset, size: str = "20x30") -> BytesIO:
     text_y = height - 3*mm    # Отступ сверху
     text_width = width - qr_width - 4*mm
     
-    # Font sizes based on label size
-    if size == "20x30":
+    # Font sizes based on label size (canonical)
+    if canonical_size == "30x20":
         title_font_size = 8
         text_font_size = 6
-    else:  # 30x40
+    else:  # 40x30
         title_font_size = 12
         text_font_size = 9
     
@@ -145,7 +165,7 @@ def create_label(
 @router.get("/label/{asset_id}/{size}")
 def get_label(
     asset_id: int,
-    size: Literal["20x30", "30x40"] = "20x30",
+    size: Literal["30x20", "40x30", "20x30", "30x40"] = "30x20",
     db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user)
 ):
