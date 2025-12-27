@@ -44,8 +44,17 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.inventorypro-api.rule=Host(`ams.it-uae.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.inventorypro-api.entrypoints=websecure"
+      - "traefik.http.routers.inventorypro-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.inventorypro-api.loadbalancer.server.port=8000"
+      - "traefik.http.middlewares.inventorypro-api-stripprefix.stripprefix.prefixes=/api"
+      - "traefik.http.routers.inventorypro-api.middlewares=inventorypro-api-stripprefix"
     networks:
       - inventorypro_network
+      - traefik_proxy
 
   frontend:
     build: 
@@ -57,25 +66,15 @@ services:
     restart: unless-stopped
     expose:
       - "3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.inventorypro-frontend.rule=Host(`ams.it-uae.com`)"
+      - "traefik.http.routers.inventorypro-frontend.entrypoints=websecure"
+      - "traefik.http.routers.inventorypro-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.inventorypro-frontend.loadbalancer.server.port=3000"
     networks:
       - inventorypro_network
-
-  nginx:
-    image: nginx:alpine
-    container_name: inventorypro_nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt:/etc/nginx/ssl:ro
-      - /var/www/certbot:/var/www/certbot:ro
-    depends_on:
-      - backend
-      - frontend
-    networks:
-      - inventorypro_network
+      - traefik_proxy
 
 volumes:
   postgres_data:
@@ -84,4 +83,5 @@ volumes:
 networks:
   inventorypro_network:
     driver: bridge
-
+  traefik_proxy:
+    external: true
