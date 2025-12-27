@@ -24,7 +24,7 @@ ssh root@ams.it-uae.com
 
 ───────────────────────────────────────────────────────────────
 
-cd /var/www && rm -rf inventorypro && git clone https://github.com/rakhatu/inventorypro.git && cd inventorypro && cat > .env << 'EOF'
+cd /var/www && rm -rf inventorypro && git clone https://github.com/rakhatutebayev/inventorypro.git && cd inventorypro && cat > .env << 'EOF'
 POSTGRES_PASSWORD=$(openssl rand -hex 16)
 SECRET_KEY=$(openssl rand -hex 32)
 DEBUG=False
