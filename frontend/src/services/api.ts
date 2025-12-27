@@ -1,10 +1,23 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
 // Используем относительный путь для правильной работы с HTTPS
-const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
+// Это гарантирует, что запросы будут использовать тот же протокол (HTTPS), что и страница
+let API_URL = import.meta.env.VITE_API_URL || '/api/v1';
+
+// Если URL абсолютный с http://, заменяем на относительный путь
+if (API_URL.startsWith('http://')) {
+  // Извлекаем путь из URL (например, 'http://ams.it-uae.com/api/v1' -> '/api/v1')
+  try {
+    const url = new URL(API_URL);
+    API_URL = url.pathname;
+  } catch (e) {
+    // Если не удалось распарсить, используем '/api/v1'
+    API_URL = '/api/v1';
+  }
+}
 
 // Убеждаемся, что baseURL является относительным путем (начинается с /)
-const baseURL = API_URL.startsWith('http') ? API_URL : API_URL.startsWith('/') ? API_URL : `/${API_URL}`;
+const baseURL = API_URL.startsWith('/') ? API_URL : `/${API_URL}`;
 
 const api: AxiosInstance = axios.create({
   baseURL: baseURL,
