@@ -4,6 +4,11 @@
 If you deploy behind Traefik and see `Mixed Content` (HTTPS page → HTTP requests), see:
 - `MIXED_CONTENT_TRAEFIK_FASTAPI_VITE.md`
 
+## Frontend note: avoid redirect to /login on browser refresh
+
+If on page refresh (`F5`) you get redirected to `/login` even with a valid token, see:
+- `AUTH_REFRESH_PROTECTED_ROUTE.md`
+
 
 IT Equipment Management System для управления мониторами, ноутбуками и телефонами.
 
