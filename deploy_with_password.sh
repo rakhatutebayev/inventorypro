@@ -1,66 +1,59 @@
 #!/bin/bash
-# Скрипт для выполнения на сервере ams.it-uae.com
-# Скопируйте этот скрипт на сервер и выполните: bash server_deploy.sh
 
+# Скрипт для деплоя с использованием sshpass
+# Установите sshpass: brew install hudochenkov/sshpass/sshpass (macOS)
+
+SERVER="root@ams.it-uae.com"
+PASSWORD="hVjrf8Ux"
+PROJECT_DIR="/var/www/inventorypro"
+
+# Проверка sshpass
+if ! command -v sshpass &> /dev/null; then
+    echo "❌ sshpass не установлен"
+    echo "Установите: brew install hudochenkov/sshpass/sshpass"
+    exit 1
+fi
+
+echo "🚀 Деплой на сервер..."
+
+sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER bash << 'REMOTE_SCRIPT'
 set -e
 
-echo "🚀 Деплой InventoryPro на сервер"
-echo "================================"
-echo ""
+PROJECT_DIR="/var/www/inventorypro"
 
-# 1. Очистка
-echo "1️⃣  Остановка старых контейнеров..."
+echo "1️⃣  Очистка..."
 docker ps -aq | xargs -r docker stop 2>/dev/null || true
 docker ps -aq | xargs -r docker rm 2>/dev/null || true
-
-echo "2️⃣  Очистка volumes..."
 docker volume prune -f 2>/dev/null || true
+rm -rf $PROJECT_DIR
 
-echo "3️⃣  Удаление старой директории..."
-rm -rf /var/www/inventorypro
-rm -rf /root/inventorypro
-
-# 2. Установка зависимостей
-echo ""
-echo "4️⃣  Проверка зависимостей..."
+echo "2️⃣  Установка Git..."
 command -v git >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y git -qq)
-command -v docker >/dev/null 2>&1 || (curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh)
 
-# 3. Клонирование
-echo ""
-echo "5️⃣  Клонирование репозитория..."
+echo "3️⃣  Клонирование..."
 mkdir -p /var/www
 cd /var/www
-git clone https://github.com/rakhatu/inventorypro.git 2>&1 || (cd inventorypro && git pull)
-cd inventorypro
+git clone https://github.com/rakhatu/inventorypro.git $PROJECT_DIR 2>&1 || (cd $PROJECT_DIR && git pull)
+cd $PROJECT_DIR
 
-# 4. Создание .env
-echo ""
-echo "6️⃣  Создание .env файла..."
+echo "4️⃣  Создание .env..."
 cat > .env << EOF
 POSTGRES_PASSWORD=$(openssl rand -hex 16)
 SECRET_KEY=$(openssl rand -hex 32)
 DEBUG=False
 EOF
 
-# 5. Запуск
-echo ""
-echo "7️⃣  Запуск Docker Compose..."
+echo "5️⃣  Запуск Docker Compose..."
 docker-compose -f docker-compose.prod.yml up -d --build
 
-echo ""
-echo "⏳ Ожидание запуска сервисов (50 секунд)..."
+echo "⏳ Ожидание (50 секунд)..."
 sleep 50
 
-# 6. Миграции
-echo ""
-echo "8️⃣  Применение миграций..."
+echo "6️⃣  Миграции..."
 docker-compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
 
-# 7. Начальные данные
-echo ""
-echo "9️⃣  Создание начальных данных..."
-docker-compose -f docker-compose.prod.yml exec -T backend python -c "
+echo "7️⃣  Начальные данные..."
+docker-compose -f docker-compose.prod.yml exec -T backend python << 'PYTHON_SCRIPT'
 from app.database import SessionLocal
 from app.models.user import User, UserRole
 from app.models.company import Company
@@ -88,20 +81,21 @@ try:
         db.add(Employee(name='John Doe', phone='001', position='Manager'))
         print('✅ Employee created')
     db.commit()
-    print('✅ All initial data created')
+    print('✅ All done')
 except Exception as e:
     db.rollback()
     print(f'⚠️  Error: {e}')
-"
+PYTHON_SCRIPT
 
-# 8. Проверка
-echo ""
-echo "🔟 Проверка статуса..."
+echo "8️⃣  Проверка статуса..."
 docker-compose -f docker-compose.prod.yml ps
 
 echo ""
 echo "✅ Деплой завершен!"
+echo "🌐 http://ams.it-uae.com"
+echo "🔐 admin / admin123"
+REMOTE_SCRIPT
+
 echo ""
-echo "🌐 Приложение доступно: http://ams.it-uae.com"
-echo "🔐 Логин: admin / admin123"
+echo "✅ Готово!"
 
