@@ -19,7 +19,7 @@ export default function AssetForm({ onSuccess, onCancel, asset }: AssetFormProps
     company_code: '',
     device_type_code: '',
     serial_number: '',
-    vendor: '',
+    vendor_id: '',
     model: '',
     location_type: LocationType.warehouse,
     location_id: '',
@@ -47,12 +47,17 @@ export default function AssetForm({ onSuccess, onCancel, asset }: AssetFormProps
     queryFn: () => referencesService.getEmployees(),
   });
 
+  const { data: vendors = [] } = useQuery({
+    queryKey: ['vendors'],
+    queryFn: () => referencesService.getVendors(),
+  });
+
   const createMutation = useMutation({
     mutationFn: (data: {
       company_code: string;
       device_type_code: string;
       serial_number: string;
-      vendor: string;
+      vendor_id: number;
       model: string;
       location_type: LocationType;
       location_id: number;
@@ -64,7 +69,7 @@ export default function AssetForm({ onSuccess, onCancel, asset }: AssetFormProps
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: { id: number; payload: Partial<Pick<Asset, 'serial_number' | 'vendor' | 'model'>> }) =>
+    mutationFn: (data: { id: number; payload: Partial<Pick<Asset, 'serial_number' | 'vendor_id' | 'model'>> }) =>
       assetsService.update(data.id, data.payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
@@ -79,7 +84,7 @@ export default function AssetForm({ onSuccess, onCancel, asset }: AssetFormProps
       company_code: asset.company_code,
       device_type_code: asset.device_type_code,
       serial_number: asset.serial_number,
-      vendor: asset.vendor,
+      vendor_id: String(asset.vendor_id),
       model: asset.model,
       location_type: asset.location_type,
       location_id: String(asset.location_id),
@@ -103,17 +108,18 @@ export default function AssetForm({ onSuccess, onCancel, asset }: AssetFormProps
         id: asset.id,
         payload: {
           serial_number: formData.serial_number,
-          vendor: formData.vendor,
+          vendor_id: Number(formData.vendor_id),
           model: formData.model,
         },
       });
       return;
     }
 
-    if (formData.location_id) {
+    if (formData.location_id && formData.vendor_id) {
       createMutation.mutate({
         ...formData,
         location_id: Number(formData.location_id),
+        vendor_id: Number(formData.vendor_id),
       });
     }
   };
@@ -177,12 +183,27 @@ export default function AssetForm({ onSuccess, onCancel, asset }: AssetFormProps
         onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })}
       />
 
-      <Input
-        label="Vendor *"
-        required
-        value={formData.vendor}
-        onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
-      />
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Vendor *
+        </label>
+        <select
+          required
+          value={formData.vendor_id}
+          onChange={(e) => setFormData({ ...formData, vendor_id: e.target.value })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          <option value="">Select vendor...</option>
+          {vendors.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.name}
+            </option>
+          ))}
+        </select>
+        <div className="text-xs text-gray-500 mt-1">
+          Vendor list is managed in <span className="font-medium">References → Vendors</span>.
+        </div>
+      </div>
 
       <Input
         label="Model *"

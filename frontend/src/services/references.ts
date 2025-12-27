@@ -1,5 +1,5 @@
 import api from './api';
-import { Company, DeviceType, Warehouse, Employee } from '../types';
+import { Company, DeviceType, Warehouse, Employee, Vendor } from '../types';
 
 export const referencesService = {
   // Companies
@@ -80,6 +80,23 @@ export const referencesService = {
 
   async deleteEmployee(id: number): Promise<void> {
     await api.delete(`/references/employees/${id}`);
+  },
+
+  // Vendors
+  async getVendors(): Promise<Vendor[]> {
+    const response = await api.get<Vendor[]>('/references/vendors');
+    return response.data;
+  },
+  async createVendor(data: { name: string }): Promise<Vendor> {
+    const response = await api.post<Vendor>('/references/vendors', data);
+    return response.data;
+  },
+  async updateVendor(id: number, data: { name: string }): Promise<Vendor> {
+    const response = await api.put<Vendor>(`/references/vendors/${id}`, data);
+    return response.data;
+  },
+  async deleteVendor(id: number): Promise<void> {
+    await api.delete(`/references/vendors/${id}`);
   },
 };
 

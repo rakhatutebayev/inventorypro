@@ -1,5 +1,5 @@
 from app.schemas.user import User, UserCreate, UserInDB, Token, TokenData
-from app.schemas.asset import Asset, AssetCreate, AssetUpdate, AssetBase
+from app.schemas.asset import Asset, AssetCreate, AssetUpdate
 from app.schemas.movement import Movement, MovementCreate
 from app.schemas.inventory import InventorySession, InventorySessionCreate, InventoryResult, InventoryResultCreate
 
@@ -12,7 +12,6 @@ __all__ = [
     "Asset",
     "AssetCreate",
     "AssetUpdate",
-    "AssetBase",
     "Movement",
     "MovementCreate",
     "InventorySession",

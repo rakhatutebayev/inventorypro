@@ -28,7 +28,7 @@ export const assetsService = {
     company_code: string;
     device_type_code: string;
     serial_number: string;
-    vendor: string;
+    vendor_id: number;
     model: string;
     location_type: string;
     location_id: number;

@@ -41,12 +41,18 @@ export interface Employee {
   position?: string;
 }
 
+export interface Vendor {
+  id: number;
+  name: string;
+}
+
 export interface Asset {
   id: number;
   company_code: string;
   device_type_code: string;
   inventory_number: string;
   serial_number: string;
+  vendor_id: number;
   vendor: string;
   model: string;
   location_type: LocationType;

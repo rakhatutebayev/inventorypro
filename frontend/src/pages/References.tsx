@@ -5,7 +5,7 @@ import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import Modal from '../components/common/Modal';
 
-type TabType = 'companies' | 'device-types' | 'warehouses' | 'employees';
+type TabType = 'companies' | 'device-types' | 'warehouses' | 'employees' | 'vendors';
 
 export default function References() {
   const [activeTab, setActiveTab] = useState<TabType>('companies');
@@ -37,6 +37,12 @@ export default function References() {
     queryFn: () => referencesService.getEmployees(),
   });
 
+  // Vendors
+  const { data: vendors = [] } = useQuery({
+    queryKey: ['vendors'],
+    queryFn: () => referencesService.getVendors(),
+  });
+
   // Delete mutations
   const deleteCompanyMutation = useMutation({
     mutationFn: (id: number) => referencesService.deleteCompany(id),
@@ -66,6 +72,13 @@ export default function References() {
     },
   });
 
+  const deleteVendorMutation = useMutation({
+    mutationFn: (id: number) => referencesService.deleteVendor(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+    },
+  });
+
   const handleEdit = (item: any) => {
     setEditingItem(item);
     setIsModalOpen(true);
@@ -91,6 +104,9 @@ export default function References() {
         break;
       case 'employees':
         deleteEmployeeMutation.mutate(id);
+        break;
+      case 'vendors':
+        deleteVendorMutation.mutate(id);
         break;
     }
   };
@@ -252,6 +268,43 @@ export default function References() {
     </div>
   );
 
+  const renderVendors = () => (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-200">
+      {vendors.length === 0 ? (
+        <div className="px-6 py-12 text-center text-gray-500">
+          No vendors found
+        </div>
+      ) : (
+        vendors.map((vendor) => (
+          <div
+            key={vendor.id}
+            className="px-6 py-4 hover:bg-gray-50 transition-colors flex items-center justify-between"
+          >
+            <div className="flex-1">
+              <div className="flex items-center gap-4">
+                <span className="font-semibold text-gray-900">{vendor.name}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleEdit(vendor)}
+                className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => handleDelete(vendor.id)}
+                className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="flex justify-between items-center mb-6">
@@ -301,6 +354,16 @@ export default function References() {
         >
           Employees
         </button>
+        <button
+          onClick={() => setActiveTab('vendors')}
+          className={`px-4 py-2 font-medium ${
+            activeTab === 'vendors'
+              ? 'border-b-2 border-primary-600 text-primary-600'
+              : 'text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          Vendors
+        </button>
       </div>
 
       {/* Content */}
@@ -308,6 +371,7 @@ export default function References() {
       {activeTab === 'device-types' && renderDeviceTypes()}
       {activeTab === 'warehouses' && renderWarehouses()}
       {activeTab === 'employees' && renderEmployees()}
+      {activeTab === 'vendors' && renderVendors()}
 
       {/* Modal */}
       <ReferenceModal
@@ -400,6 +464,23 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
     },
   });
 
+  const createVendorMutation = useMutation({
+    mutationFn: (data: { name: string }) => referencesService.createVendor(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      onClose();
+    },
+  });
+
+  const updateVendorMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { name: string } }) =>
+      referencesService.updateVendor(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      onClose();
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -427,6 +508,12 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
       } else {
         createEmployeeMutation.mutate(formData);
       }
+    } else if (type === 'vendors') {
+      if (item) {
+        updateVendorMutation.mutate({ id: item.id, data: formData });
+      } else {
+        createVendorMutation.mutate(formData);
+      }
     }
   };
 
@@ -446,6 +533,7 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
         case 'device-types': return 'Add New Device Type';
         case 'warehouses': return 'Add New Warehouse';
         case 'employees': return 'Add New Employee';
+        case 'vendors': return 'Add New Vendor';
         default: return 'Add New';
       }
     } else {
@@ -454,6 +542,7 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
         case 'device-types': return 'Edit Device Type';
         case 'warehouses': return 'Edit Warehouse';
         case 'employees': return 'Edit Employee';
+        case 'vendors': return 'Edit Vendor';
         default: return 'Edit';
       }
     }
@@ -564,6 +653,20 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
                 type="text"
                 value={formData.position || ''}
                 onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+              />
+            </div>
+          </>
+        )}
+
+        {type === 'vendors' && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+              <Input
+                type="text"
+                value={formData.name || ''}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
               />
             </div>
           </>

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.database import get_db
 from app.models.asset import Asset, LocationType
+from app.models.vendor import Vendor
 from app.models.company import Company
 from app.models.device_type import DeviceType
 from app.models.employee import Employee
@@ -101,6 +102,14 @@ def create_asset(
             detail=f"Device type with code {asset_in.device_type_code} not found"
         )
     
+    # Validate vendor exists
+    vendor = db.query(Vendor).filter(Vendor.id == asset_in.vendor_id).first()
+    if not vendor:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Vendor with id {asset_in.vendor_id} not found"
+        )
+
     # Check serial number uniqueness
     if db.query(Asset).filter(Asset.serial_number == asset_in.serial_number).first():
         raise HTTPException(
@@ -137,7 +146,8 @@ def create_asset(
         device_type_code=asset_in.device_type_code,
         inventory_number=inventory_number,
         serial_number=asset_in.serial_number,
-        vendor=asset_in.vendor,
+        vendor_id=asset_in.vendor_id,
+        vendor=vendor.name,
         model=asset_in.model,
         location_type=asset_in.location_type,
         location_id=asset_in.location_id
@@ -187,9 +197,23 @@ def update_asset(
                 detail="Serial number already exists"
             )
 
+    # Validate vendor if provided; keep vendor string in sync
+    if asset_in.vendor_id is not None and asset_in.vendor_id != asset.vendor_id:
+        vendor = db.query(Vendor).filter(Vendor.id == asset_in.vendor_id).first()
+        if not vendor:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Vendor with id {asset_in.vendor_id} not found"
+            )
+        asset.vendor_id = vendor.id
+        asset.vendor = vendor.name
+
     # Update fields
     update_data = asset_in.dict(exclude_unset=True)
     for field, value in update_data.items():
+        if field in ("vendor_id", "vendor"):
+            # vendor_id handled above, vendor is derived from Vendor
+            continue
         setattr(asset, field, value)
     
     db.commit()

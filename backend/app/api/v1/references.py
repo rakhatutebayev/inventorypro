@@ -6,6 +6,8 @@ from app.models.company import Company
 from app.models.device_type import DeviceType
 from app.models.warehouse import Warehouse
 from app.models.employee import Employee
+from app.models.vendor import Vendor
+from app.models.asset import Asset
 from app.api.deps import get_current_active_user, require_admin
 from pydantic import BaseModel
 
@@ -50,6 +52,14 @@ class EmployeeResponse(BaseModel):
         from_attributes = True
 
 
+class VendorResponse(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
 # Create/Update models
 class CompanyCreate(BaseModel):
     code: str
@@ -70,6 +80,10 @@ class EmployeeCreate(BaseModel):
     name: str
     phone: str
     position: Optional[str] = None
+
+
+class VendorCreate(BaseModel):
+    name: str
 
 
 # Companies
@@ -366,5 +380,73 @@ def delete_employee(
             detail="Employee not found"
         )
     db.delete(employee)
+    db.commit()
+    return None
+
+
+# Vendors
+@router.get("/vendors", response_model=List[VendorResponse])
+def get_vendors(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user)
+):
+    vendors = db.query(Vendor).order_by(Vendor.name.asc()).all()
+    return vendors
+
+
+@router.post("/vendors", response_model=VendorResponse, status_code=status.HTTP_201_CREATED)
+def create_vendor(
+    vendor_in: VendorCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)
+):
+    name = (vendor_in.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vendor name is required")
+    if db.query(Vendor).filter(Vendor.name == name).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vendor already exists")
+    vendor = Vendor(name=name)
+    db.add(vendor)
+    db.commit()
+    db.refresh(vendor)
+    return vendor
+
+
+@router.put("/vendors/{vendor_id}", response_model=VendorResponse)
+def update_vendor(
+    vendor_id: int,
+    vendor_in: VendorCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)
+):
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
+    if not vendor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vendor not found")
+    name = (vendor_in.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vendor name is required")
+    if db.query(Vendor).filter(Vendor.name == name, Vendor.id != vendor_id).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vendor already exists")
+    vendor.name = name
+    # Keep denormalized Asset.vendor in sync for labels/reports
+    db.query(Asset).filter(Asset.vendor_id == vendor_id).update({Asset.vendor: name})
+    db.commit()
+    db.refresh(vendor)
+    return vendor
+
+
+@router.delete("/vendors/{vendor_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_vendor(
+    vendor_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)
+):
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
+    if not vendor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vendor not found")
+    # Prevent deletion if referenced by assets
+    if db.query(Asset).filter(Asset.vendor_id == vendor_id).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vendor is used by assets")
+    db.delete(vendor)
     db.commit()
     return None
