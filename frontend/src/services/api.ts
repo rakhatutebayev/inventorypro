@@ -17,6 +17,7 @@ if (API_URL.startsWith('http://')) {
 }
 
 // Убеждаемся, что baseURL является относительным путем (начинается с /)
+// Относительный путь гарантирует использование того же протокола (HTTPS), что и текущая страница
 const baseURL = API_URL.startsWith('/') ? API_URL : `/${API_URL}`;
 
 const api: AxiosInstance = axios.create({
@@ -25,6 +26,34 @@ const api: AxiosInstance = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Перехватчик запросов для проверки и исправления URL в runtime
+api.interceptors.request.use(
+  (config) => {
+    // Если по какой-то причине URL начинается с http://, заменяем на относительный путь
+    if (config.url && config.url.startsWith('http://')) {
+      try {
+        const url = new URL(config.url);
+        config.url = url.pathname + (url.search || '');
+      } catch (e) {
+        // Если не удалось распарсить, оставляем как есть
+      }
+    }
+    // Проверяем baseURL
+    if (config.baseURL && config.baseURL.startsWith('http://')) {
+      try {
+        const url = new URL(config.baseURL);
+        config.baseURL = url.pathname;
+      } catch (e) {
+        config.baseURL = '/api/v1';
+      }
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 // Request interceptor - добавляем токен к запросам
 api.interceptors.request.use(
