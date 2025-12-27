@@ -59,7 +59,7 @@ export default function Assets() {
   const getLocationName = (type: LocationType, id: number) => {
     if (type === LocationType.employee) {
       const emp = employees.find((e) => e.id === id);
-      return emp ? emp.name : `Employee #${id}`;
+      return emp ? `${emp.name} (${emp.phone})` : `Employee #${id}`;
     } else {
       const wh = warehouses.find((w) => w.id === id);
       return wh ? wh.name : `Warehouse #${id}`;
