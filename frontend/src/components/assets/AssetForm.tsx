@@ -1,17 +1,20 @@
-import { useState, FormEvent } from 'react';
+import { useEffect, useMemo, useState, FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { assetsService } from '../../services/assets';
 import { referencesService } from '../../services/references';
-import { LocationType } from '../../types';
+import { Asset, LocationType } from '../../types';
 import Button from '../common/Button';
 import Input from '../common/Input';
 
 interface AssetFormProps {
   onSuccess?: () => void;
   onCancel?: () => void;
+  asset?: Asset | null;
 }
 
-export default function AssetForm({ onSuccess, onCancel }: AssetFormProps) {
+export default function AssetForm({ onSuccess, onCancel, asset }: AssetFormProps) {
+  const isEdit = !!asset;
+
   const [formData, setFormData] = useState({
     company_code: '',
     device_type_code: '',
@@ -60,8 +63,53 @@ export default function AssetForm({ onSuccess, onCancel }: AssetFormProps) {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: (data: { id: number; payload: Partial<Pick<Asset, 'serial_number' | 'vendor' | 'model'>> }) =>
+      assetsService.update(data.id, data.payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      onSuccess?.();
+    },
+  });
+
+  // Prefill when editing
+  useEffect(() => {
+    if (!asset) return;
+    setFormData({
+      company_code: asset.company_code,
+      device_type_code: asset.device_type_code,
+      serial_number: asset.serial_number,
+      vendor: asset.vendor,
+      model: asset.model,
+      location_type: asset.location_type,
+      location_id: String(asset.location_id),
+    });
+  }, [asset]);
+
+  const companyName = useMemo(() => {
+    const c = companies.find((x) => x.code === formData.company_code);
+    return c ? `${c.name} (${c.code})` : formData.company_code;
+  }, [companies, formData.company_code]);
+
+  const deviceTypeName = useMemo(() => {
+    const dt = deviceTypes.find((x) => x.code === formData.device_type_code);
+    return dt ? `${dt.name} (${dt.code})` : formData.device_type_code;
+  }, [deviceTypes, formData.device_type_code]);
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (isEdit && asset) {
+      updateMutation.mutate({
+        id: asset.id,
+        payload: {
+          serial_number: formData.serial_number,
+          vendor: formData.vendor,
+          model: formData.model,
+        },
+      });
+      return;
+    }
+
     if (formData.location_id) {
       createMutation.mutate({
         ...formData,
@@ -76,38 +124,50 @@ export default function AssetForm({ onSuccess, onCancel }: AssetFormProps) {
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Company *
         </label>
-        <select
-          required
-          value={formData.company_code}
-          onChange={(e) => setFormData({ ...formData, company_code: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-        >
-          <option value="">Select company...</option>
-          {companies.map((company) => (
-            <option key={company.id} value={company.code}>
-              {company.name} ({company.code})
-            </option>
-          ))}
-        </select>
+        {isEdit ? (
+          <div className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-700">
+            {companyName || '—'}
+          </div>
+        ) : (
+          <select
+            required
+            value={formData.company_code}
+            onChange={(e) => setFormData({ ...formData, company_code: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">Select company...</option>
+            {companies.map((company) => (
+              <option key={company.id} value={company.code}>
+                {company.name} ({company.code})
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Device Type *
         </label>
-        <select
-          required
-          value={formData.device_type_code}
-          onChange={(e) => setFormData({ ...formData, device_type_code: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-        >
-          <option value="">Select device type...</option>
-          {deviceTypes.map((dt) => (
-            <option key={dt.id} value={dt.code}>
-              {dt.name} ({dt.code})
-            </option>
-          ))}
-        </select>
+        {isEdit ? (
+          <div className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-700">
+            {deviceTypeName || '—'}
+          </div>
+        ) : (
+          <select
+            required
+            value={formData.device_type_code}
+            onChange={(e) => setFormData({ ...formData, device_type_code: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">Select device type...</option>
+            {deviceTypes.map((dt) => (
+              <option key={dt.id} value={dt.code}>
+                {dt.name} ({dt.code})
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <Input
@@ -131,55 +191,65 @@ export default function AssetForm({ onSuccess, onCancel }: AssetFormProps) {
         onChange={(e) => setFormData({ ...formData, model: e.target.value })}
       />
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Location Type *
-        </label>
-        <select
-          required
-          value={formData.location_type}
-          onChange={(e) => {
-            setFormData({
-              ...formData,
-              location_type: e.target.value as LocationType,
-              location_id: '',
-            });
-          }}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-        >
-          <option value={LocationType.warehouse}>Warehouse</option>
-          <option value={LocationType.employee}>Employee</option>
-        </select>
-      </div>
+      {isEdit ? (
+        <div className="bg-gray-50 border border-gray-200 text-gray-700 px-3 py-2 rounded-md text-sm">
+          Location changes should be done via <span className="font-medium">Move</span> to keep movement history.
+        </div>
+      ) : (
+        <>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Location Type *
+            </label>
+            <select
+              required
+              value={formData.location_type}
+              onChange={(e) => {
+                setFormData({
+                  ...formData,
+                  location_type: e.target.value as LocationType,
+                  location_id: '',
+                });
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value={LocationType.warehouse}>Warehouse</option>
+              <option value={LocationType.employee}>Employee</option>
+            </select>
+          </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          {formData.location_type === LocationType.employee ? 'Employee *' : 'Warehouse *'}
-        </label>
-        <select
-          required
-          value={formData.location_id}
-          onChange={(e) => setFormData({ ...formData, location_id: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-        >
-          <option value="">Select...</option>
-          {formData.location_type === LocationType.employee
-            ? employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.name} ({emp.phone})
-                </option>
-              ))
-            : warehouses.map((wh) => (
-                <option key={wh.id} value={wh.id}>
-                  {wh.name}
-                </option>
-              ))}
-        </select>
-      </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {formData.location_type === LocationType.employee ? 'Employee *' : 'Warehouse *'}
+            </label>
+            <select
+              required
+              value={formData.location_id}
+              onChange={(e) => setFormData({ ...formData, location_id: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="">Select...</option>
+              {formData.location_type === LocationType.employee
+                ? employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name} ({emp.phone})
+                    </option>
+                  ))
+                : warehouses.map((wh) => (
+                    <option key={wh.id} value={wh.id}>
+                      {wh.name}
+                    </option>
+                  ))}
+            </select>
+          </div>
+        </>
+      )}
 
-      {createMutation.isError && (
+      {(createMutation.isError || updateMutation.isError) && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
-          {(createMutation.error as any)?.response?.data?.detail || 'Failed to create asset'}
+          {(createMutation.error as any)?.response?.data?.detail ||
+            (updateMutation.error as any)?.response?.data?.detail ||
+            (isEdit ? 'Failed to update asset' : 'Failed to create asset')}
         </div>
       )}
 
@@ -193,9 +263,15 @@ export default function AssetForm({ onSuccess, onCancel }: AssetFormProps) {
           type="submit"
           variant="primary"
           className="flex-1"
-          disabled={createMutation.isPending}
+          disabled={createMutation.isPending || updateMutation.isPending}
         >
-          {createMutation.isPending ? 'Creating...' : 'Create Asset'}
+          {isEdit
+            ? updateMutation.isPending
+              ? 'Updating...'
+              : 'Update Asset'
+            : createMutation.isPending
+              ? 'Creating...'
+              : 'Create Asset'}
         </Button>
       </div>
     </form>

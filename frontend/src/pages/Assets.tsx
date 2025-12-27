@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { assetsService } from '../services/assets';
 import { printService } from '../services/print';
+import { movementsService } from '../services/movements';
+import { referencesService } from '../services/references';
 import { Asset, LocationType } from '../types';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
@@ -14,10 +16,33 @@ export default function Assets() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [toType, setToType] = useState<LocationType>(LocationType.employee);
+  const [toId, setToId] = useState<number | ''>('');
+
+  const queryClient = useQueryClient();
 
   const { data: assets = [], isLoading } = useQuery({
     queryKey: ['assets', search],
     queryFn: () => assetsService.getAll({ search, limit: 100 }),
+  });
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: () => referencesService.getWarehouses(),
+  });
+
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => referencesService.getEmployees(),
+  });
+
+  const { data: movements = [] } = useQuery({
+    queryKey: ['movements', selectedAsset?.id],
+    queryFn: () => movementsService.getByAssetId(selectedAsset!.id),
+    enabled: !!selectedAsset?.id && isHistoryModalOpen,
   });
 
 
@@ -32,12 +57,64 @@ export default function Assets() {
   };
 
   const getLocationName = (type: LocationType, id: number) => {
-    // Location names will be loaded from API if needed
     if (type === LocationType.employee) {
-      return `Employee #${id}`;
+      const emp = employees.find((e) => e.id === id);
+      return emp ? emp.name : `Employee #${id}`;
     } else {
-      return `Warehouse #${id}`;
+      const wh = warehouses.find((w) => w.id === id);
+      return wh ? wh.name : `Warehouse #${id}`;
     }
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => assetsService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      setIsModalOpen(false);
+      setIsHistoryModalOpen(false);
+      setIsPrintModalOpen(false);
+      setIsEditModalOpen(false);
+      setIsMoveModalOpen(false);
+      setSelectedAsset(null);
+    },
+  });
+
+  const moveMutation = useMutation({
+    mutationFn: (data: { asset_id: number; to_type: LocationType; to_id: number }) =>
+      movementsService.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['movements', selectedAsset?.id] });
+      setIsMoveModalOpen(false);
+      setToId('');
+    },
+  });
+
+  const openEdit = (asset: Asset) => {
+    setSelectedAsset(asset);
+    setIsEditModalOpen(true);
+  };
+
+  const openPrint = (asset: Asset) => {
+    setSelectedAsset(asset);
+    setIsPrintModalOpen(true);
+  };
+
+  const openMove = (asset: Asset) => {
+    setSelectedAsset(asset);
+    setToType(LocationType.employee);
+    setToId('');
+    setIsMoveModalOpen(true);
+  };
+
+  const openHistory = (asset: Asset) => {
+    setSelectedAsset(asset);
+    setIsHistoryModalOpen(true);
+  };
+
+  const handleDelete = (asset: Asset) => {
+    if (!confirm(`Delete asset ${asset.inventory_number}? This cannot be undone.`)) return;
+    deleteMutation.mutate(asset.id);
   };
 
   return (
@@ -62,37 +139,90 @@ export default function Assets() {
         <div className="text-center py-8 text-gray-500">No assets found</div>
       ) : (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+            <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              <div className="col-span-2">Inventory</div>
+              <div className="col-span-3">Vendor + Model</div>
+              <div className="col-span-3">Serial</div>
+              <div className="col-span-2">Location</div>
+              <div className="col-span-2 text-right">Actions</div>
+            </div>
+          </div>
           <ul className="divide-y divide-gray-200">
             {assets.map((asset) => (
               <li
                 key={asset.id}
-                className="px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
-                onClick={() => handleAssetClick(asset)}
+                className="px-4 py-2 hover:bg-gray-50 transition-colors"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <div className="font-semibold text-gray-900 truncate">
-                        {asset.inventory_number}
-                      </div>
-                      <div className="text-xs text-gray-500 whitespace-nowrap">
-                        {asset.device_type_code}
-                      </div>
-                    </div>
+                <div className="grid grid-cols-12 gap-2 items-center">
+                  <button
+                    className="col-span-2 text-left font-medium text-gray-900 truncate"
+                    onClick={() => handleAssetClick(asset)}
+                    title={asset.inventory_number}
+                  >
+                    {asset.inventory_number}
+                  </button>
 
-                    <div className="text-sm text-gray-700 truncate mt-0.5">
-                      {asset.vendor} {asset.model}
-                    </div>
-
-                    <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                      <span className="font-mono">S/N: {asset.serial_number}</span>
-                      <span>
-                        Location: <span className="text-gray-700">{getLocationName(asset.location_type, asset.location_id)}</span>
-                      </span>
-                    </div>
+                  <div className="col-span-3 text-sm text-gray-700 truncate" title={`${asset.vendor} ${asset.model}`}>
+                    {asset.vendor} {asset.model}
                   </div>
 
-                  <div className="text-gray-400 text-lg leading-none select-none">›</div>
+                  <div className="col-span-3 text-sm font-mono text-gray-600 truncate" title={asset.serial_number}>
+                    {asset.serial_number}
+                  </div>
+
+                  <div className="col-span-2 text-sm text-gray-700 truncate" title={getLocationName(asset.location_type, asset.location_id)}>
+                    {getLocationName(asset.location_type, asset.location_id)}
+                  </div>
+
+                  <div className="col-span-2 flex justify-end gap-2">
+                    <button
+                      className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-white"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEdit(asset);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-white"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openPrint(asset);
+                      }}
+                    >
+                      Print
+                    </button>
+                    <button
+                      className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-white"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openMove(asset);
+                      }}
+                    >
+                      Move
+                    </button>
+                    <button
+                      className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-white"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openHistory(asset);
+                      }}
+                    >
+                      History
+                    </button>
+                    <button
+                      className="px-2 py-1 text-xs rounded border border-red-300 text-red-700 hover:bg-red-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(asset);
+                      }}
+                      disabled={deleteMutation.isPending}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </li>
             ))}
@@ -140,6 +270,45 @@ export default function Assets() {
               >
                 Print Label
               </Button>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setIsMoveModalOpen(true);
+                }}
+              >
+                Move
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setIsHistoryModalOpen(true);
+                }}
+              >
+                View History
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setIsEditModalOpen(true);
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                variant="danger"
+                className="flex-1"
+                onClick={() => selectedAsset && handleDelete(selectedAsset)}
+              >
+                Delete
+              </Button>
             </div>
           </div>
         )}
@@ -173,6 +342,136 @@ export default function Assets() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit Asset Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title={`Edit Asset ${selectedAsset?.inventory_number || ''}`}
+        size="lg"
+      >
+        <AssetForm
+          asset={selectedAsset}
+          onSuccess={() => setIsEditModalOpen(false)}
+          onCancel={() => setIsEditModalOpen(false)}
+        />
+      </Modal>
+
+      {/* Move Asset Modal */}
+      <Modal
+        isOpen={isMoveModalOpen}
+        onClose={() => {
+          setIsMoveModalOpen(false);
+          setToId('');
+        }}
+        title={`Move Asset: ${selectedAsset?.inventory_number || ''}`}
+        size="md"
+      >
+        {selectedAsset && (
+          <div className="space-y-4">
+            <div>
+              <div className="text-sm text-gray-500">Current Location</div>
+              <div className="font-medium">
+                {getLocationName(selectedAsset.location_type, selectedAsset.location_id)}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Move To</label>
+              <select
+                value={toType}
+                onChange={(e) => {
+                  setToType(e.target.value as LocationType);
+                  setToId('');
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value={LocationType.employee}>Employee</option>
+                <option value={LocationType.warehouse}>Warehouse</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {toType === LocationType.employee ? 'Select Employee' : 'Select Warehouse'}
+              </label>
+              <select
+                value={toId}
+                onChange={(e) => setToId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Select...</option>
+                {toType === LocationType.employee
+                  ? employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name} ({emp.phone})
+                      </option>
+                    ))
+                  : warehouses.map((wh) => (
+                      <option key={wh.id} value={wh.id}>
+                        {wh.name}
+                      </option>
+                    ))}
+              </select>
+            </div>
+
+            <Button
+              onClick={() =>
+                selectedAsset &&
+                toId &&
+                moveMutation.mutate({
+                  asset_id: selectedAsset.id,
+                  to_type: toType,
+                  to_id: Number(toId),
+                })
+              }
+              variant="primary"
+              fullWidth
+              disabled={!toId || moveMutation.isPending}
+            >
+              {moveMutation.isPending ? 'Moving...' : 'Move Asset'}
+            </Button>
+
+            {moveMutation.isError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+                {(moveMutation.error as any)?.response?.data?.detail || 'Failed to move asset'}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Movement History Modal */}
+      <Modal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        title={`Movement History: ${selectedAsset?.inventory_number || ''}`}
+        size="lg"
+      >
+        {selectedAsset && (
+          <div className="space-y-3">
+            {movements.length === 0 ? (
+              <div className="text-gray-500">No movements recorded</div>
+            ) : (
+              <div className="space-y-2">
+                {movements.map((m) => (
+                  <div key={m.id} className="border border-gray-200 rounded-md p-3 bg-white">
+                    <div className="text-sm text-gray-600">
+                      <span className="font-medium text-gray-900">From:</span> {getLocationName(m.from_type, m.from_id)}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      <span className="font-medium text-gray-900">To:</span> {getLocationName(m.to_type, m.to_id)}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {new Date(m.moved_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </Modal>
