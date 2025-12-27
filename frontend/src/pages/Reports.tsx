@@ -18,20 +18,6 @@ export default function Reports() {
     enabled: false, // Загружать только при нажатии кнопки
   });
 
-  const { data: deviceTypes = [] } = useQuery({
-    queryKey: ['device-types'],
-    queryFn: () => referencesService.getDeviceTypes(),
-  });
-
-  const { data: employees = [] } = useQuery({
-    queryKey: ['employees'],
-    queryFn: () => referencesService.getEmployees(),
-  });
-
-  const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: () => referencesService.getWarehouses(),
-  });
 
   const handleGenerateReport = async () => {
     await refetch();

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { assetsService } from '../services/assets';
 import { referencesService } from '../services/references';
 import { printService } from '../services/print';
@@ -17,21 +17,9 @@ export default function Assets() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
-  const queryClient = useQueryClient();
-
   const { data: assets = [], isLoading } = useQuery({
     queryKey: ['assets', search],
     queryFn: () => assetsService.getAll({ search, limit: 100 }),
-  });
-
-  const { data: companies = [] } = useQuery({
-    queryKey: ['companies'],
-    queryFn: () => referencesService.getCompanies(),
-  });
-
-  const { data: deviceTypes = [] } = useQuery({
-    queryKey: ['device-types'],
-    queryFn: () => referencesService.getDeviceTypes(),
   });
 
   const { data: warehouses = [] } = useQuery({
