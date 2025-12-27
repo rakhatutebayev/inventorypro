@@ -54,7 +54,7 @@ services:
       - "traefik.http.routers.inventorypro-api.middlewares=inventorypro-api-stripprefix"
     networks:
       - inventorypro_network
-      - traefik_proxy
+      - traefik-net
 
   frontend:
     build: 
@@ -74,7 +74,7 @@ services:
       - "traefik.http.services.inventorypro-frontend.loadbalancer.server.port=3000"
     networks:
       - inventorypro_network
-      - traefik_proxy
+      - traefik-net
 
 volumes:
   postgres_data:
@@ -83,5 +83,5 @@ volumes:
 networks:
   inventorypro_network:
     driver: bridge
-  traefik_proxy:
+  traefik-net:
     external: true
