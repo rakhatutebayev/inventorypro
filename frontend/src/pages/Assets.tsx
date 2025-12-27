@@ -22,15 +22,6 @@ export default function Assets() {
     queryFn: () => assetsService.getAll({ search, limit: 100 }),
   });
 
-  const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: () => referencesService.getWarehouses(),
-  });
-
-  const { data: employees = [] } = useQuery({
-    queryKey: ['employees'],
-    queryFn: () => referencesService.getEmployees(),
-  });
 
   const handleAssetClick = (asset: Asset) => {
     setSelectedAsset(asset);
@@ -43,12 +34,11 @@ export default function Assets() {
   };
 
   const getLocationName = (type: LocationType, id: number) => {
+    // Location names will be loaded from API if needed
     if (type === LocationType.employee) {
-      const employee = employees.find((e) => e.id === id);
-      return employee ? employee.name : `Employee #${id}`;
+      return `Employee #${id}`;
     } else {
-      const warehouse = warehouses.find((w) => w.id === id);
-      return warehouse ? warehouse.name : `Warehouse #${id}`;
+      return `Warehouse #${id}`;
     }
   };
 
