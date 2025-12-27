@@ -1,4 +1,9 @@
 # InventoryPro
+## Production note: avoid HTTPS Mixed Content issues
+
+If you deploy behind Traefik and see `Mixed Content` (HTTPS page → HTTP requests), see:
+- `MIXED_CONTENT_TRAEFIK_FASTAPI_VITE.md`
+
 
 IT Equipment Management System для управления мониторами, ноутбуками и телефонами.
 
