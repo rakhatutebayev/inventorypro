@@ -74,7 +74,7 @@ def wrap_to_width(
 ) -> list[str]:
     """
     Переносит строку по ширине (для S/N как на макете).
-    Если не помещается — последнюю строку обрезает с '...'.
+    Важно: НЕ использует '...' (по ТЗ).
     """
     text = (text or "").strip()
     if not text:
@@ -147,12 +147,6 @@ def wrap_to_width(
     # Ограничение по числу строк + ellipsis на последней
     if len(lines) > max_lines:
         lines = lines[:max_lines]
-
-    if len(lines) == max_lines:
-        # если ещё есть текст — обрежем последнюю строку с ...
-        joined = "".join(lines)
-        if joined != text:
-            lines[-1] = truncate_to_width(c, lines[-1], font_name, font_size, max_width)
 
     return lines
 
@@ -266,58 +260,111 @@ def generate_label_pdf(asset: Asset, size: str = "30x20") -> BytesIO:
     inv_label_font = "Helvetica"
     inv_value_font = "Helvetica-Bold"
 
-    # Верхняя строка Vendor/Model (1 строка, при необходимости ellipsis)
-    vm_fit = truncate_to_width(c, vendor_model, vm_font, vm_size_target, text_w)
+    # === Секции по высоте (как в примере): Vendor / SN / INV ===
+    # Делаем фиксированные секции по пропорциям, чтобы SN гарантированно имел свою "область"
+    vendor_section_h = content_h * 0.32
+    inv_section_h = content_h * 0.26
+    sn_section_h = content_h - vendor_section_h - inv_section_h
 
     top_y = y0 + content_h - padding
-    y_vm = top_y - vm_size_target
-    c.setFont(vm_font, vm_size_target)
-    c.drawString(text_x, y_vm, vm_fit)
+    vendor_top = y0 + content_h
+    vendor_bottom = vendor_top - vendor_section_h
+    inv_bottom = y0
+    inv_top = inv_bottom + inv_section_h
+    sn_top = vendor_bottom
+    sn_bottom = inv_top
 
-    # Линия под Vendor/Model
-    y_rule1 = y_vm - rule_gap
+    # Линии-разделители секций
     c.setLineWidth(0.25 * mm)
+    y_rule1 = vendor_bottom
+    y_rule2 = inv_top
     c.line(text_x, y_rule1, text_x + text_w, y_rule1)
+    c.line(text_x, y_rule2, text_x + text_w, y_rule2)
 
-    # Блок S/N: "S/N:" + серийник (в 2 строки)
+    # --- Vendor/Model (1 строка, без '...': уменьшаем шрифт, пока не влезет) ---
+    vm_size = vm_size_target
+    c.setFont(vm_font, vm_size)
+    while vm_size > 6 and c.stringWidth(vendor_model, vm_font, vm_size) > text_w:
+        vm_size -= 1
+        c.setFont(vm_font, vm_size)
+
+    # Вертикально центрируем в секции Vendor
+    y_vm = vendor_bottom + (vendor_section_h - vm_size) / 2
+    c.setFont(vm_font, vm_size)
+    c.drawString(text_x, y_vm, vendor_model)
+
+    # --- Блок S/N: может переноситься, без '...' ---
     sn_prefix = "S/N:"
     prefix_gap = 1.2 * mm
     sn_prefix_w = c.stringWidth(sn_prefix, sn_font, sn_size_target) + prefix_gap
     sn_text_w = max(text_w - sn_prefix_w, 1 * mm)
 
-    # Подбираем/переносим только значение серийника
-    c.setFont(sn_font, sn_size_target)
-    serial_lines = wrap_to_width(c, serial_raw, sn_font, sn_size_target, sn_text_w, max_lines=max_serial_lines)
-    if not serial_lines:
-        serial_lines = [""]
+    # Подбор размера шрифта для SN:
+    # - допускаем перенос на несколько строк
+    # - обязательно влезть по высоте SN-секции
+    sn_size = sn_size_target
+    min_sn_size = 5 if canonical_size == "30x20" else 7
 
-    # Первая строка: prefix + первая часть
-    y_sn1 = y_rule1 - rule_gap - sn_size_target
-    c.drawString(text_x, y_sn1, sn_prefix)
-    c.drawString(text_x + sn_prefix_w, y_sn1, serial_lines[0])
+    while True:
+        c.setFont(sn_font, sn_size)
+        # сколько строк реально помещается по высоте SN секции
+        max_lines_fit = max(1, int((sn_section_h - 2 * padding + line_gap) // (sn_size + line_gap)))
+        max_lines_fit = min(max_lines_fit, 3)  # визуально как на макете (обычно 2), максимум 3
 
-    # Вторая строка (если есть) — выравниваем под значением (как на макете)
-    y_sn_last = y_sn1
-    if len(serial_lines) > 1:
-        y_sn2 = y_sn1 - (sn_size_target + line_gap)
-        c.drawString(text_x + sn_prefix_w, y_sn2, serial_lines[1])
-        y_sn_last = y_sn2
+        serial_lines = wrap_to_width(c, serial_raw, sn_font, sn_size, sn_text_w, max_lines=max_lines_fit)
 
-    # Линия под S/N блоком
-    y_rule2 = y_sn_last - rule_gap
-    c.line(text_x, y_rule2, text_x + text_w, y_rule2)
+        # Проверим что весь serial вошёл: если последний символ последней строки
+        # не соответствует концу serial_raw, значит не уместилось в max_lines_fit.
+        joined = "".join(serial_lines).replace(" ", "")
+        full = serial_raw.replace(" ", "")
 
-    # Нижняя строка Inv. No: label regular + value bold
+        height_ok = (len(serial_lines) * sn_size + (max(0, len(serial_lines) - 1) * line_gap)) <= (sn_section_h - 2 * padding)
+        full_ok = joined == full
+
+        if height_ok and full_ok:
+            break
+
+        if sn_size <= min_sn_size:
+            # Последний шанс: разрешим больше строк, если по высоте влезет
+            # (но без переполнения секции)
+            max_lines_fit = max(1, int((sn_section_h - 2 * padding + line_gap) // (sn_size + line_gap)))
+            serial_lines = wrap_to_width(c, serial_raw, sn_font, sn_size, sn_text_w, max_lines=max_lines_fit)
+            break
+
+        sn_size -= 1
+
+    # Рисуем S/N строки внутри SN секции (сверху вниз)
+    y = sn_top - padding - sn_size
+    c.setFont(sn_font, sn_size)
+    if serial_lines:
+        c.drawString(text_x, y, sn_prefix)
+        c.drawString(text_x + sn_prefix_w, y, serial_lines[0])
+        for i in range(1, len(serial_lines)):
+            y -= (sn_size + line_gap)
+            c.drawString(text_x + sn_prefix_w, y, serial_lines[i])
+    else:
+        c.drawString(text_x, y, sn_prefix)
+
+    # --- Inv. No: 1 строка, без '...': уменьшаем шрифт, пока не влезет ---
     inv_label = "Inv. No:"
-    inv_label_w = c.stringWidth(inv_label, inv_label_font, inv_size_target) + prefix_gap
-    inv_value_w = max(text_w - inv_label_w, 1 * mm)
-    inv_fit = truncate_to_width(c, inv_no, inv_value_font, inv_size_target, inv_value_w)
+    inv_size = inv_size_target
+    min_inv_size = 6 if canonical_size == "30x20" else 9
 
-    y_inv = y0 + padding + 0.2 * mm
-    c.setFont(inv_label_font, inv_size_target)
+    while True:
+        inv_label_w = c.stringWidth(inv_label, inv_label_font, inv_size) + prefix_gap
+        inv_value_w = max(text_w - inv_label_w, 1 * mm)
+        if c.stringWidth(inv_no, inv_value_font, inv_size) <= inv_value_w:
+            break
+        if inv_size <= min_inv_size:
+            break
+        inv_size -= 1
+
+    # Вертикально центрируем в нижней секции
+    y_inv = inv_bottom + (inv_section_h - inv_size) / 2
+    c.setFont(inv_label_font, inv_size)
     c.drawString(text_x, y_inv, inv_label)
-    c.setFont(inv_value_font, inv_size_target)
-    c.drawString(text_x + inv_label_w, y_inv, inv_fit)
+    c.setFont(inv_value_font, inv_size)
+    c.drawString(text_x + inv_label_w, y_inv, inv_no)
     
     c.save()
     buffer.seek(0)
