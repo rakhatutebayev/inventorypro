@@ -71,10 +71,14 @@ class LabelRequest(BaseModel):
 def generate_qr_code(data: str) -> BytesIO:
     """Генерирует QR код и возвращает его как BytesIO"""
     qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        # v1–v3 по ТЗ, но оставляем fit=True чтобы при необходимости QR мог вырасти
+        # (в PDF мы всё равно масштабируем его в фиксированную область)
+        version=None,
+        # По ТЗ: Error Correction Level M или Q
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
         box_size=10,
-        border=4,
+        # Quiet zone важна для читаемости (без рамок/фона)
+        border=2,
     )
     qr.add_data(data)
     qr.make(fit=True)
@@ -95,10 +99,10 @@ def generate_label_pdf(asset: Asset, size: str = "30x20") -> BytesIO:
     c = canvas.Canvas(buffer, pagesize=(width, height))
 
     # Layout
-    padding = 1.5 * mm
+    padding = 1.2 * mm
 
-    # Левый блок - QR код (30% ширины по ТЗ)
-    qr_block_w = width * 0.30
+    # Левый блок - QR код (~40% ширины по ТЗ)
+    qr_block_w = width * 0.40
     qr_block_h = height
 
     # Правая часть - текст (Vendor/Model, SN, INV) без переноса
@@ -109,9 +113,20 @@ def generate_label_pdf(asset: Asset, size: str = "30x20") -> BytesIO:
     qr_data = asset.inventory_number
     qr_img_io = generate_qr_code(qr_data)
     
-    # Размещаем QR код в левом блоке (квадрат внутри блока)
-    qr_size = min(qr_block_w - 2 * padding, qr_block_h - 2 * padding)
-    qr_size = max(qr_size, 1 * mm)
+    # Размещаем QR код в левом блоке.
+    # По ТЗ для 30x20: область QR ~13x13 мм.
+    if canonical_size == "30x20":
+        target_qr_mm = 13 * mm
+    else:
+        # Для 40x30 делаем QR крупнее, но всё равно ограничиваемся доступной областью
+        target_qr_mm = 18 * mm
+
+    qr_size = min(
+        target_qr_mm,
+        qr_block_w - 2 * padding,
+        qr_block_h - 2 * padding,
+    )
+    qr_size = max(qr_size, 10 * mm)  # минимальная читаемость на 300 DPI
     qr_x = padding + (qr_block_w - 2 * padding - qr_size) / 2
     qr_y = padding + (qr_block_h - 2 * padding - qr_size) / 2
 
@@ -121,53 +136,66 @@ def generate_label_pdf(asset: Asset, size: str = "30x20") -> BytesIO:
 
     # Текст без переноса: Vendor/Model, SN, INV
     vendor_model = f"{asset.vendor} {asset.model}".strip()
-    sn_text = f"SN: {asset.serial_number}".strip()
+    # По ТЗ: подписи без переносов, поэтому при необходимости делаем ellipsis
+    serial_text = f"SN: {asset.serial_number}".strip()
     inv_text = f"INV: {asset.inventory_number}".strip()
 
-    # Подбор размеров шрифта, чтобы всё гарантированно помещалось (без переноса)
+    # Шрифты: по ТЗ Roboto, но в ReportLab без встраивания TTF его нет.
+    # Поэтому используем Helvetica как безопасный дефолт для печати.
+    # (Если захотите Roboto — добавим TTF в репозиторий и зарегистрируем через pdfmetrics.registerFont.)
     if canonical_size == "30x20":
-        title_max, title_min = 9, 6
-        text_max, text_min = 7, 5
-        line_gap = 1.0 * mm
+        # По ТЗ: Vendor+Model 10pt Bold, Serial 8pt, INV 9pt Semi-Bold
+        vm_size_target = 10
+        sn_size_target = 8
+        inv_size_target = 9
+        vm_min, sn_min, inv_min = 7, 6, 7
+        line_gap = 0.9 * mm
     else:  # 40x30
-        title_max, title_min = 13, 9
-        text_max, text_min = 10, 7
+        vm_size_target = 14
+        sn_size_target = 11
+        inv_size_target = 12
+        vm_min, sn_min, inv_min = 10, 8, 9
         line_gap = 1.2 * mm
 
-    title_font = "Helvetica-Bold"
-    text_font = "Helvetica"
+    vm_font = "Helvetica-Bold"     # Bold (как Vendor+Model Bold)
+    sn_font = "Helvetica"          # Regular
+    inv_font = "Helvetica-Bold"    # "Semi-Bold" заменяем на Bold
 
-    title_size = title_max
-    text_size = text_max
+    vm_size = vm_size_target
+    sn_size = sn_size_target
+    inv_size = inv_size_target
 
-    # Пробуем уменьшать шрифты, пока не влезем по высоте (ширину добьём truncation'ом)
+    # Уменьшаем шрифты, пока 3 строки не влезут по высоте (без переносов)
     max_text_area_h = height - 2 * padding
     while True:
-        needed_h = title_size + line_gap + text_size + line_gap + text_size
+        needed_h = vm_size + line_gap + sn_size + line_gap + inv_size
         if needed_h <= max_text_area_h:
             break
-        if title_size > title_min:
-            title_size -= 1
-        if text_size > text_min:
-            text_size -= 1
-        if title_size == title_min and text_size == text_min:
+        if vm_size > vm_min:
+            vm_size -= 1
+        if sn_size > sn_min:
+            sn_size -= 1
+        if inv_size > inv_min:
+            inv_size -= 1
+        if vm_size == vm_min and sn_size == sn_min and inv_size == inv_min:
             break
 
     # Теперь гарантируем ширину через обрезание (без переноса)
-    vendor_model_fit = truncate_to_width(c, vendor_model, title_font, title_size, text_block_w)
-    sn_fit = truncate_to_width(c, sn_text, text_font, text_size, text_block_w)
-    inv_fit = truncate_to_width(c, inv_text, text_font, text_size, text_block_w)
+    vendor_model_fit = truncate_to_width(c, vendor_model, vm_font, vm_size, text_block_w)
+    sn_fit = truncate_to_width(c, serial_text, sn_font, sn_size, text_block_w)
+    inv_fit = truncate_to_width(c, inv_text, inv_font, inv_size, text_block_w)
 
     # Печать текста (сверху вниз)
-    y = height - padding - title_size
-    c.setFont(title_font, title_size)
+    y = height - padding - vm_size
+    c.setFont(vm_font, vm_size)
     c.drawString(text_block_x, y, vendor_model_fit)
 
-    y -= (line_gap + text_size)
-    c.setFont(text_font, text_size)
+    y -= (line_gap + sn_size)
+    c.setFont(sn_font, sn_size)
     c.drawString(text_block_x, y, sn_fit)
 
-    y -= (line_gap + text_size)
+    y -= (line_gap + inv_size)
+    c.setFont(inv_font, inv_size)
     c.drawString(text_block_x, y, inv_fit)
     
     c.save()
