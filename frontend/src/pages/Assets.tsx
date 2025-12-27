@@ -381,20 +381,31 @@ export default function Assets() {
             {movements.length === 0 ? (
               <div className="text-gray-500">No movements recorded</div>
             ) : (
-              <div className="space-y-2">
-                {movements.map((m) => (
-                  <div key={m.id} className="border border-gray-200 rounded-md p-3 bg-white">
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium text-gray-900">From:</span> {getLocationName(m.from_type, m.from_id)}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium text-gray-900">To:</span> {getLocationName(m.to_type, m.to_id)}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {new Date(m.moved_at).toLocaleString()}
-                    </div>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+                  <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    <div className="col-span-3">Date</div>
+                    <div className="col-span-4">From</div>
+                    <div className="col-span-5">To</div>
                   </div>
-                ))}
+                </div>
+                <ul className="divide-y divide-gray-200">
+                  {movements.map((m) => (
+                    <li key={m.id} className="px-4 py-2">
+                      <div className="grid grid-cols-12 gap-2 items-center">
+                        <div className="col-span-3 text-sm text-gray-700 whitespace-nowrap">
+                          {new Date(m.moved_at).toLocaleString()}
+                        </div>
+                        <div className="col-span-4 text-sm text-gray-700 truncate" title={getLocationName(m.from_type, m.from_id)}>
+                          {getLocationName(m.from_type, m.from_id)}
+                        </div>
+                        <div className="col-span-5 text-sm text-gray-700 truncate" title={getLocationName(m.to_type, m.to_id)}>
+                          {getLocationName(m.to_type, m.to_id)}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
