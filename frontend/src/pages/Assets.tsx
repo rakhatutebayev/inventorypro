@@ -140,28 +140,24 @@ export default function Assets() {
       ) : (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-            <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+            <div className="grid grid-cols-10 gap-2 text-xs font-semibold text-gray-600 uppercase tracking-wide">
               <div className="col-span-2">Inventory</div>
               <div className="col-span-3">Vendor + Model</div>
               <div className="col-span-3">Serial</div>
               <div className="col-span-2">Location</div>
-              <div className="col-span-2 text-right">Actions</div>
             </div>
           </div>
           <ul className="divide-y divide-gray-200">
             {assets.map((asset) => (
               <li
                 key={asset.id}
-                className="px-4 py-2 hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={() => handleAssetClick(asset)}
               >
-                <div className="grid grid-cols-12 gap-2 items-center">
-                  <button
-                    className="col-span-2 text-left font-medium text-gray-900 truncate"
-                    onClick={() => handleAssetClick(asset)}
-                    title={asset.inventory_number}
-                  >
+                <div className="grid grid-cols-10 gap-2 items-center">
+                  <div className="col-span-2 text-left font-medium text-gray-900 truncate" title={asset.inventory_number}>
                     {asset.inventory_number}
-                  </button>
+                  </div>
 
                   <div className="col-span-3 text-sm text-gray-700 truncate" title={`${asset.vendor} ${asset.model}`}>
                     {asset.vendor} {asset.model}
@@ -173,55 +169,6 @@ export default function Assets() {
 
                   <div className="col-span-2 text-sm text-gray-700 truncate" title={getLocationName(asset.location_type, asset.location_id)}>
                     {getLocationName(asset.location_type, asset.location_id)}
-                  </div>
-
-                  <div className="col-span-2 flex justify-end gap-2">
-                    <button
-                      className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEdit(asset);
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openPrint(asset);
-                      }}
-                    >
-                      Print
-                    </button>
-                    <button
-                      className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openMove(asset);
-                      }}
-                    >
-                      Move
-                    </button>
-                    <button
-                      className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openHistory(asset);
-                      }}
-                    >
-                      History
-                    </button>
-                    <button
-                      className="px-2 py-1 text-xs rounded border border-red-300 text-red-700 hover:bg-red-50"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(asset);
-                      }}
-                      disabled={deleteMutation.isPending}
-                    >
-                      Delete
-                    </button>
                   </div>
                 </div>
               </li>
