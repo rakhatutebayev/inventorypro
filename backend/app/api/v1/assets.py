@@ -50,13 +50,14 @@ def read_assets(
     return assets
 
 
-@router.get("/scan/{inventory_number}", response_model=AssetSchema)
+@router.get("/scan/{inventory_number:path}", response_model=AssetSchema)
 def scan_asset(
     inventory_number: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user)
 ):
-    asset = db.query(Asset).filter(Asset.inventory_number == inventory_number).first()
+    inv = (inventory_number or "").strip().upper()
+    asset = db.query(Asset).filter(Asset.inventory_number == inv).first()
     if not asset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

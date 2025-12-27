@@ -20,7 +20,8 @@ export const assetsService = {
   },
 
   async scan(inventoryNumber: string): Promise<Asset> {
-    const response = await api.get<Asset>(`/assets/scan/${inventoryNumber}`);
+    const normalized = encodeURIComponent((inventoryNumber || '').trim());
+    const response = await api.get<Asset>(`/assets/scan/${normalized}`);
     return response.data;
   },
 
