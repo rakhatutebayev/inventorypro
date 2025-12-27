@@ -22,6 +22,7 @@ export default function Movements() {
   const { data: assets = [] } = useQuery({
     queryKey: ['assets', searchAsset],
     queryFn: () => assetsService.getAll({ search: searchAsset, limit: 20 }),
+    enabled: searchAsset.trim().length > 0,
   });
 
   // Fetch warehouses and employees for destination selection
@@ -99,29 +100,39 @@ export default function Movements() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {assets.map((asset) => (
-          <Card key={asset.id}>
-            <div className="space-y-2">
-              <div className="font-semibold text-lg">{asset.inventory_number}</div>
-              <div className="text-gray-600">
-                {asset.vendor} {asset.model}
+      {searchAsset.trim().length === 0 ? (
+        <div className="text-center py-10 text-gray-500">
+          Enter a search query to find an asset to move.
+        </div>
+      ) : assets.length === 0 ? (
+        <div className="text-center py-10 text-gray-500">
+          No assets found for “{searchAsset}”.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          {assets.map((asset) => (
+            <Card key={asset.id}>
+              <div className="space-y-2">
+                <div className="font-semibold text-lg">{asset.inventory_number}</div>
+                <div className="text-gray-600">
+                  {asset.vendor} {asset.model}
+                </div>
+                <div className="text-sm text-gray-500">
+                  Current: {getLocationName(asset.location_type, asset.location_id)}
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  fullWidth
+                  onClick={() => handleMoveClick(asset.id)}
+                >
+                  Move Asset
+                </Button>
               </div>
-              <div className="text-sm text-gray-500">
-                Current: {getLocationName(asset.location_type, asset.location_id)}
-              </div>
-              <Button
-                variant="primary"
-                size="sm"
-                fullWidth
-                onClick={() => handleMoveClick(asset.id)}
-              >
-                Move Asset
-              </Button>
-            </div>
-          </Card>
-        ))}
-      </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {selectedAsset && (
         <div className="mt-6">
