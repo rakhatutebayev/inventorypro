@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { assetsService } from '../services/assets';
 import { printService } from '../services/print';
 import { Asset, LocationType } from '../types';
-import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import Modal from '../components/common/Modal';
@@ -62,26 +61,42 @@ export default function Assets() {
       ) : assets.length === 0 ? (
         <div className="text-center py-8 text-gray-500">No assets found</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {assets.map((asset) => (
-            <Card key={asset.id} onClick={() => handleAssetClick(asset)}>
-              <div className="space-y-2">
-                <div className="font-semibold text-lg">{asset.inventory_number}</div>
-                <div className="text-gray-600">
-                  {asset.vendor} {asset.model}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <ul className="divide-y divide-gray-200">
+            {assets.map((asset) => (
+              <li
+                key={asset.id}
+                className="px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                onClick={() => handleAssetClick(asset)}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="font-semibold text-gray-900 truncate">
+                        {asset.inventory_number}
+                      </div>
+                      <div className="text-xs text-gray-500 whitespace-nowrap">
+                        {asset.device_type_code}
+                      </div>
+                    </div>
+
+                    <div className="text-sm text-gray-700 truncate mt-0.5">
+                      {asset.vendor} {asset.model}
+                    </div>
+
+                    <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                      <span className="font-mono">S/N: {asset.serial_number}</span>
+                      <span>
+                        Location: <span className="text-gray-700">{getLocationName(asset.location_type, asset.location_id)}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-gray-400 text-lg leading-none select-none">›</div>
                 </div>
-                <div className="text-sm text-gray-500">
-                  Serial: {asset.serial_number}
-                </div>
-                <div className="text-sm">
-                  <span className="text-gray-500">Location: </span>
-                  <span className="font-medium">
-                    {getLocationName(asset.location_type, asset.location_id)}
-                  </span>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
