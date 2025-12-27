@@ -30,24 +30,48 @@ const api: AxiosInstance = axios.create({
 // Request interceptor - исправляем URL и добавляем токен
 api.interceptors.request.use(
   (config) => {
-    // Если по какой-то причине URL начинается с http://, заменяем на относительный путь
+    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Принудительно используем относительные пути для HTTPS
+    // Проверяем и исправляем baseURL
+    if (config.baseURL) {
+      if (config.baseURL.startsWith('http://')) {
+        try {
+          const url = new URL(config.baseURL);
+          config.baseURL = url.pathname || '/api/v1';
+        } catch (e) {
+          config.baseURL = '/api/v1';
+        }
+      } else if (config.baseURL.startsWith('https://')) {
+        // Даже если это HTTPS, используем относительный путь для консистентности
+        try {
+          const url = new URL(config.baseURL);
+          config.baseURL = url.pathname || '/api/v1';
+        } catch (e) {
+          config.baseURL = '/api/v1';
+        }
+      }
+    } else {
+      // Если baseURL не установлен, устанавливаем относительный путь
+      config.baseURL = '/api/v1';
+    }
+    
+    // Проверяем и исправляем url (относительный путь к эндпоинту)
     if (config.url && config.url.startsWith('http://')) {
       try {
         const url = new URL(config.url);
         config.url = url.pathname + (url.search || '');
       } catch (e) {
-        // Если не удалось распарсить, оставляем как есть
+        // Оставляем как есть, если не удалось распарсить
       }
-    }
-    // Проверяем baseURL
-    if (config.baseURL && config.baseURL.startsWith('http://')) {
+    } else if (config.url && config.url.startsWith('https://')) {
+      // Даже если это HTTPS, используем относительный путь
       try {
-        const url = new URL(config.baseURL);
-        config.baseURL = url.pathname;
+        const url = new URL(config.url);
+        config.url = url.pathname + (url.search || '');
       } catch (e) {
-        config.baseURL = '/api/v1';
+        // Оставляем как есть
       }
     }
+    
     // Добавляем токен аутентификации
     const token = localStorage.getItem('access_token');
     if (token) {
