@@ -27,7 +27,7 @@ const api: AxiosInstance = axios.create({
   },
 });
 
-// Перехватчик запросов для проверки и исправления URL в runtime
+// Request interceptor - исправляем URL и добавляем токен
 api.interceptors.request.use(
   (config) => {
     // Если по какой-то причине URL начинается с http://, заменяем на относительный путь
@@ -48,16 +48,7 @@ api.interceptors.request.use(
         config.baseURL = '/api/v1';
       }
     }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Request interceptor - добавляем токен к запросам
-api.interceptors.request.use(
-  (config) => {
+    // Добавляем токен аутентификации
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
