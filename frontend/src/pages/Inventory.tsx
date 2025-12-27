@@ -12,6 +12,7 @@ import Modal from '../components/common/Modal';
 export default function Inventory() {
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
   const [scanNumber, setScanNumber] = useState('');
+  const [scanError, setScanError] = useState<string | null>(null);
   const [isNewSessionModalOpen, setIsNewSessionModalOpen] = useState(false);
   const [sessionDescription, setSessionDescription] = useState('');
   const [selectedDeviceTypes, setSelectedDeviceTypes] = useState<string[]>([]);
@@ -64,10 +65,17 @@ export default function Inventory() {
   });
 
   // Scan asset
-  const { data: scannedAsset, refetch: scanAsset } = useQuery({
+  const {
+    data: scannedAsset,
+    refetch: scanAsset,
+    isFetching: isScanning,
+    isError: isScanError,
+    error: scanErrorObj,
+  } = useQuery({
     queryKey: ['scan-asset', scanNumber],
     queryFn: () => assetsService.scan(scanNumber),
     enabled: false,
+    retry: false,
   });
 
   const createSessionMutation = useMutation({
@@ -109,9 +117,13 @@ export default function Inventory() {
   });
 
   const handleScan = () => {
-    if (scanNumber && currentSessionId) {
-      scanAsset();
+    setScanError(null);
+    if (!currentSessionId) {
+      setScanError('Select an active session first.');
+      return;
     }
+    if (!scanNumber.trim()) return;
+    scanAsset();
   };
 
   const handleConfirmFound = () => {
@@ -243,12 +255,28 @@ export default function Inventory() {
                 label="Scan Inventory Number"
                 placeholder="Scan or enter inventory number"
                 value={scanNumber}
-                onChange={(e) => setScanNumber(e.target.value)}
+                onChange={(e) => {
+                  setScanNumber(e.target.value);
+                  setScanError(null);
+                  queryClient.removeQueries({ queryKey: ['scan-asset'] });
+                }}
                 onKeyPress={(e) => e.key === 'Enter' && handleScan()}
               />
-              <Button onClick={handleScan} className="mt-2" disabled={!scanNumber}>
-                Scan
+              <Button
+                onClick={handleScan}
+                className="mt-2"
+                disabled={!scanNumber.trim() || isScanning}
+              >
+                {isScanning ? 'Scanning...' : 'Scan'}
               </Button>
+
+              {(scanError || isScanError) && (
+                <div className="mt-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded text-sm">
+                  {scanError ||
+                    (scanErrorObj as any)?.response?.data?.detail ||
+                    'Scan failed'}
+                </div>
+              )}
             </div>
 
             {scannedAsset && (
@@ -267,11 +295,26 @@ export default function Inventory() {
                       ? `Employee #${scannedAsset.location_id}`
                       : `Warehouse #${scannedAsset.location_id}`}
                   </div>
+                  {results.some((r) => r.asset_id === scannedAsset.id) && (
+                    <div className="text-sm bg-yellow-100 text-yellow-900 px-3 py-2 rounded">
+                      This asset is already checked in this session.
+                    </div>
+                  )}
                   <div className="flex gap-2 mt-4">
-                    <Button variant="primary" onClick={handleConfirmFound} className="flex-1">
+                    <Button
+                      variant="primary"
+                      onClick={handleConfirmFound}
+                      className="flex-1"
+                      disabled={addResultMutation.isPending || results.some((r) => r.asset_id === scannedAsset.id)}
+                    >
                       Found ✓
                     </Button>
-                    <Button variant="danger" onClick={handleConfirmNotFound} className="flex-1">
+                    <Button
+                      variant="danger"
+                      onClick={handleConfirmNotFound}
+                      className="flex-1"
+                      disabled={addResultMutation.isPending || results.some((r) => r.asset_id === scannedAsset.id)}
+                    >
                       Not Found ✗
                     </Button>
                   </div>
