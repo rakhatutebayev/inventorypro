@@ -95,6 +95,16 @@ export default function Assets() {
     deleteMutation.mutate(asset.id);
   };
 
+  const formatDateOnly = (isoOrDate: string) => {
+    const d = new Date(isoOrDate);
+    // dd.mm.yyyy
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(d);
+  };
+
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="flex justify-between items-center mb-6">
@@ -394,7 +404,7 @@ export default function Assets() {
                     <li key={m.id} className="px-4 py-2">
                       <div className="grid grid-cols-12 gap-2 items-center">
                         <div className="col-span-3 text-sm text-gray-700 whitespace-nowrap">
-                          {new Date(m.moved_at).toLocaleString()}
+                          {formatDateOnly(m.moved_at)}
                         </div>
                         <div className="col-span-4 text-sm text-gray-700 truncate" title={getLocationName(m.from_type, m.from_id)}>
                           {getLocationName(m.from_type, m.from_id)}
