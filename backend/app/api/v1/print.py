@@ -9,6 +9,7 @@ import qrcode
 from reportlab.lib.pagesizes import mm
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
+from reportlab.lib import colors
 from pydantic import BaseModel
 from typing import Literal
 
@@ -63,6 +64,99 @@ def truncate_to_width(c: canvas.Canvas, text: str, font_name: str, font_size: in
     return best
 
 
+def wrap_to_width(
+    c: canvas.Canvas,
+    text: str,
+    font_name: str,
+    font_size: int,
+    max_width: float,
+    max_lines: int = 2,
+) -> list[str]:
+    """
+    Переносит строку по ширине (для S/N как на макете).
+    Если не помещается — последнюю строку обрезает с '...'.
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    # Быстрый путь: всё влезает в одну строку
+    if c.stringWidth(text, font_name, font_size) <= max_width:
+        return [text]
+
+    # Токенизация: сначала по пробелам, затем длинные куски режем по '-'
+    raw_parts = text.split()
+    parts: list[str] = []
+    for p in raw_parts:
+        if c.stringWidth(p, font_name, font_size) <= max_width:
+            parts.append(p)
+            continue
+        # если токен слишком длинный — дробим по '-'
+        if "-" in p:
+            sub = p.split("-")
+            for i, s in enumerate(sub):
+                if s:
+                    parts.append(s + ("-" if i < len(sub) - 1 else ""))
+        else:
+            parts.append(p)
+
+    lines: list[str] = []
+    cur = ""
+
+    def flush():
+        nonlocal cur
+        if cur:
+            lines.append(cur)
+            cur = ""
+
+    for token in parts:
+        candidate = token if not cur else (cur + token)
+        if c.stringWidth(candidate, font_name, font_size) <= max_width:
+            cur = candidate
+            continue
+
+        # если текущая строка пустая — token сам по себе не лезет, режем по символам
+        if not cur:
+            # бинарный поиск по длине
+            lo, hi = 1, len(token)
+            best = token[0]
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                cand = token[:mid]
+                if c.stringWidth(cand, font_name, font_size) <= max_width:
+                    best = cand
+                    lo = mid + 1
+                else:
+                    hi = mid - 1
+            cur = best
+            flush()
+            # остаток токена игнорируем, будет в следующей итерации если надо
+            rest = token[len(best):]
+            if rest:
+                parts.insert(0, rest)
+            continue
+
+        flush()
+        cur = token
+
+        if len(lines) >= max_lines:
+            break
+
+    flush()
+
+    # Ограничение по числу строк + ellipsis на последней
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+
+    if len(lines) == max_lines:
+        # если ещё есть текст — обрежем последнюю строку с ...
+        joined = "".join(lines)
+        if joined != text:
+            lines[-1] = truncate_to_width(c, lines[-1], font_name, font_size, max_width)
+
+    return lines
+
+
 class LabelRequest(BaseModel):
     asset_id: int
     size: Literal["30x20", "40x30", "20x30", "30x40"] = "30x20"
@@ -98,105 +192,130 @@ def generate_label_pdf(asset: Asset, size: str = "30x20") -> BytesIO:
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=(width, height))
 
-    # Layout
+    # === Макет как на примере (рамка + разделители) ===
+    # Важно: units ReportLab — points; мы используем mm для точных размеров.
+    outer_margin = 0.8 * mm
     padding = 1.2 * mm
+    corner_radius = 2.0 * mm
 
-    # Левый блок - QR код (~40% ширины по ТЗ)
-    qr_block_w = width * 0.40
-    qr_block_h = height
+    x0, y0 = outer_margin, outer_margin
+    content_w = width - 2 * outer_margin
+    content_h = height - 2 * outer_margin
 
-    # Правая часть - текст (Vendor/Model, SN, INV) без переноса
-    text_block_x = qr_block_w + padding
-    text_block_w = width - qr_block_w - 2 * padding
+    # Рамка (скруглённая)
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.35 * mm)
+    c.setFillColor(colors.white)
+    c.roundRect(x0, y0, content_w, content_h, corner_radius, stroke=1, fill=0)
 
-    # Генерируем QR код (данные = inventory_number)
+    # Левый блок QR ~40% ширины
+    qr_block_w = content_w * 0.40
+    div_x = x0 + qr_block_w
+
+    # Вертикальный разделитель
+    c.setLineWidth(0.25 * mm)
+    c.line(div_x, y0 + padding, div_x, y0 + content_h - padding)
+
+    # Правая область текста ~60%
+    text_x = div_x + padding
+    text_w = x0 + content_w - padding - text_x
+
+    # QR: по ТЗ 13x13мм для 30x20
     qr_data = asset.inventory_number
     qr_img_io = generate_qr_code(qr_data)
     
-    # Размещаем QR код в левом блоке.
-    # По ТЗ для 30x20: область QR ~13x13 мм.
+    # Размер QR по макету
     if canonical_size == "30x20":
         target_qr_mm = 13 * mm
     else:
-        # Для 40x30 делаем QR крупнее, но всё равно ограничиваемся доступной областью
         target_qr_mm = 18 * mm
 
-    qr_size = min(
-        target_qr_mm,
-        qr_block_w - 2 * padding,
-        qr_block_h - 2 * padding,
-    )
-    qr_size = max(qr_size, 10 * mm)  # минимальная читаемость на 300 DPI
-    qr_x = padding + (qr_block_w - 2 * padding - qr_size) / 2
-    qr_y = padding + (qr_block_h - 2 * padding - qr_size) / 2
+    qr_size = min(target_qr_mm, qr_block_w - 2 * padding, content_h - 2 * padding)
+    qr_size = max(qr_size, 10 * mm)
+    qr_x = x0 + padding + (qr_block_w - 2 * padding - qr_size) / 2
+    qr_y = y0 + padding + (content_h - 2 * padding - qr_size) / 2
 
     qr_img = ImageReader(qr_img_io)
+    c.drawImage(qr_img, qr_x, qr_y, width=qr_size, height=qr_size, preserveAspectRatio=True)
 
-    c.drawImage(qr_img, qr_x, qr_y, width=qr_size, height=qr_size, preserveAspectRatio=True, anchor="c")
-
-    # Текст без переноса: Vendor/Model, SN, INV
+    # Текст как на картинке: Vendor/Model (bold), затем блок S/N (в 2 строки), затем Inv. No
     vendor_model = f"{asset.vendor} {asset.model}".strip()
-    # По ТЗ: подписи без переносов, поэтому при необходимости делаем ellipsis
-    serial_text = f"SN: {asset.serial_number}".strip()
-    inv_text = f"INV: {asset.inventory_number}".strip()
+    serial_raw = (asset.serial_number or "").strip()
+    inv_no = (asset.inventory_number or "").strip()
 
-    # Шрифты: по ТЗ Roboto, но в ReportLab без встраивания TTF его нет.
-    # Поэтому используем Helvetica как безопасный дефолт для печати.
-    # (Если захотите Roboto — добавим TTF в репозиторий и зарегистрируем через pdfmetrics.registerFont.)
+    # Шрифты (Roboto по ТЗ — пока Helvetica, если нужно строго Roboto, добавим TTF)
     if canonical_size == "30x20":
-        # По ТЗ: Vendor+Model 10pt Bold, Serial 8pt, INV 9pt Semi-Bold
         vm_size_target = 10
         sn_size_target = 8
         inv_size_target = 9
-        vm_min, sn_min, inv_min = 7, 6, 7
-        line_gap = 0.9 * mm
+        line_gap = 0.8 * mm
+        rule_gap = 1.2 * mm
+        max_serial_lines = 2
     else:  # 40x30
         vm_size_target = 14
         sn_size_target = 11
         inv_size_target = 12
-        vm_min, sn_min, inv_min = 10, 8, 9
-        line_gap = 1.2 * mm
+        line_gap = 1.0 * mm
+        rule_gap = 1.6 * mm
+        max_serial_lines = 2
 
-    vm_font = "Helvetica-Bold"     # Bold (как Vendor+Model Bold)
-    sn_font = "Helvetica"          # Regular
-    inv_font = "Helvetica-Bold"    # "Semi-Bold" заменяем на Bold
+    vm_font = "Helvetica-Bold"
+    sn_font = "Helvetica"
+    inv_label_font = "Helvetica"
+    inv_value_font = "Helvetica-Bold"
 
-    vm_size = vm_size_target
-    sn_size = sn_size_target
-    inv_size = inv_size_target
+    # Верхняя строка Vendor/Model (1 строка, при необходимости ellipsis)
+    vm_fit = truncate_to_width(c, vendor_model, vm_font, vm_size_target, text_w)
 
-    # Уменьшаем шрифты, пока 3 строки не влезут по высоте (без переносов)
-    max_text_area_h = height - 2 * padding
-    while True:
-        needed_h = vm_size + line_gap + sn_size + line_gap + inv_size
-        if needed_h <= max_text_area_h:
-            break
-        if vm_size > vm_min:
-            vm_size -= 1
-        if sn_size > sn_min:
-            sn_size -= 1
-        if inv_size > inv_min:
-            inv_size -= 1
-        if vm_size == vm_min and sn_size == sn_min and inv_size == inv_min:
-            break
+    top_y = y0 + content_h - padding
+    y_vm = top_y - vm_size_target
+    c.setFont(vm_font, vm_size_target)
+    c.drawString(text_x, y_vm, vm_fit)
 
-    # Теперь гарантируем ширину через обрезание (без переноса)
-    vendor_model_fit = truncate_to_width(c, vendor_model, vm_font, vm_size, text_block_w)
-    sn_fit = truncate_to_width(c, serial_text, sn_font, sn_size, text_block_w)
-    inv_fit = truncate_to_width(c, inv_text, inv_font, inv_size, text_block_w)
+    # Линия под Vendor/Model
+    y_rule1 = y_vm - rule_gap
+    c.setLineWidth(0.25 * mm)
+    c.line(text_x, y_rule1, text_x + text_w, y_rule1)
 
-    # Печать текста (сверху вниз)
-    y = height - padding - vm_size
-    c.setFont(vm_font, vm_size)
-    c.drawString(text_block_x, y, vendor_model_fit)
+    # Блок S/N: "S/N:" + серийник (в 2 строки)
+    sn_prefix = "S/N:"
+    prefix_gap = 1.2 * mm
+    sn_prefix_w = c.stringWidth(sn_prefix, sn_font, sn_size_target) + prefix_gap
+    sn_text_w = max(text_w - sn_prefix_w, 1 * mm)
 
-    y -= (line_gap + sn_size)
-    c.setFont(sn_font, sn_size)
-    c.drawString(text_block_x, y, sn_fit)
+    # Подбираем/переносим только значение серийника
+    c.setFont(sn_font, sn_size_target)
+    serial_lines = wrap_to_width(c, serial_raw, sn_font, sn_size_target, sn_text_w, max_lines=max_serial_lines)
+    if not serial_lines:
+        serial_lines = [""]
 
-    y -= (line_gap + inv_size)
-    c.setFont(inv_font, inv_size)
-    c.drawString(text_block_x, y, inv_fit)
+    # Первая строка: prefix + первая часть
+    y_sn1 = y_rule1 - rule_gap - sn_size_target
+    c.drawString(text_x, y_sn1, sn_prefix)
+    c.drawString(text_x + sn_prefix_w, y_sn1, serial_lines[0])
+
+    # Вторая строка (если есть) — выравниваем под значением (как на макете)
+    y_sn_last = y_sn1
+    if len(serial_lines) > 1:
+        y_sn2 = y_sn1 - (sn_size_target + line_gap)
+        c.drawString(text_x + sn_prefix_w, y_sn2, serial_lines[1])
+        y_sn_last = y_sn2
+
+    # Линия под S/N блоком
+    y_rule2 = y_sn_last - rule_gap
+    c.line(text_x, y_rule2, text_x + text_w, y_rule2)
+
+    # Нижняя строка Inv. No: label regular + value bold
+    inv_label = "Inv. No:"
+    inv_label_w = c.stringWidth(inv_label, inv_label_font, inv_size_target) + prefix_gap
+    inv_value_w = max(text_w - inv_label_w, 1 * mm)
+    inv_fit = truncate_to_width(c, inv_no, inv_value_font, inv_size_target, inv_value_w)
+
+    y_inv = y0 + padding + 0.2 * mm
+    c.setFont(inv_label_font, inv_size_target)
+    c.drawString(text_x, y_inv, inv_label)
+    c.setFont(inv_value_font, inv_size_target)
+    c.drawString(text_x + inv_label_w, y_inv, inv_fit)
     
     c.save()
     buffer.seek(0)
