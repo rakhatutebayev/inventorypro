@@ -90,28 +90,6 @@ export default function Assets() {
     },
   });
 
-  const openEdit = (asset: Asset) => {
-    setSelectedAsset(asset);
-    setIsEditModalOpen(true);
-  };
-
-  const openPrint = (asset: Asset) => {
-    setSelectedAsset(asset);
-    setIsPrintModalOpen(true);
-  };
-
-  const openMove = (asset: Asset) => {
-    setSelectedAsset(asset);
-    setToType(LocationType.employee);
-    setToId('');
-    setIsMoveModalOpen(true);
-  };
-
-  const openHistory = (asset: Asset) => {
-    setSelectedAsset(asset);
-    setIsHistoryModalOpen(true);
-  };
-
   const handleDelete = (asset: Asset) => {
     if (!confirm(`Delete asset ${asset.inventory_number}? This cannot be undone.`)) return;
     deleteMutation.mutate(asset.id);
