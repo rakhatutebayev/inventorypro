@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { assetsService } from '../services/assets';
-import { referencesService } from '../services/references';
 import { printService } from '../services/print';
 import { Asset, LocationType } from '../types';
 import Card from '../components/common/Card';

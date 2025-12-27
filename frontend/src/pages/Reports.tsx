@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { reportsService, ReportRow } from '../services/reports';
-import { referencesService } from '../services/references';
 import Button from '../components/common/Button';
 
 type SortField = keyof ReportRow;
