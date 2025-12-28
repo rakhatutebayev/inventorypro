@@ -8,11 +8,19 @@ npm install -g eas-cli
 eas login
 ```
 
-Используйте:
-- Email: `rakhat.utebayev@gmail.com`
-- Password: `ABBYYrah1234`
+Используйте ваш Expo аккаунт (expo.dev).
 
-Или создайте аккаунт на https://expo.dev если его еще нет.
+Рекомендуемый способ для CI/автоматизации: **Expo Access Token** (без паролей).
+1) Создайте токен в `expo.dev` → Account → Access Tokens
+2) Экспортируйте переменную окружения:
+```bash
+export EXPO_TOKEN="***"
+```
+3) Запускайте EAS в non-interactive режиме:
+```bash
+cd mobile
+npx eas-cli build --platform android --profile preview --non-interactive
+```
 
 ## 2. Настройка проекта
 
@@ -35,7 +43,7 @@ eas build:configure
 
 ```bash
 cd mobile
-eas build --platform android --profile preview
+npx eas-cli build --platform android --profile preview
 ```
 
 После сборки APK будет доступен на https://expo.dev/accounts/rakhatu/
@@ -44,7 +52,7 @@ eas build --platform android --profile preview
 
 ```bash
 cd mobile
-eas build --platform ios --profile preview
+npx eas-cli build --platform ios --profile preview
 ```
 
 ## 6. Установка на устройство
@@ -61,9 +69,9 @@ eas build --platform ios --profile preview
 1. Откройте приложение
 2. Перейдите в Settings
 3. Укажите:
-   - Host: `ams.it-uae.com`
-   - Port: `80`
-4. Сохраните
+   - Base URL: `https://ams.it-uae.com/api/v1`
+   - (или Advanced: Host `ams.it-uae.com`, Port `443`, HTTPS `on`)
+4. Нажмите Save Configuration
 
 ## Альтернатива: Development Build
 
