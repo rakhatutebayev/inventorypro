@@ -41,6 +41,12 @@ export default function Assets() {
     queryFn: () => assetsService.getAll({ search, limit: 100 }),
   });
 
+  const { data: openAssetById } = useQuery({
+    queryKey: ['asset', pendingOpenAssetId],
+    queryFn: () => assetsService.getById(pendingOpenAssetId!),
+    enabled: !!pendingOpenAssetId,
+  });
+
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
     queryFn: () => referencesService.getWarehouses(),
@@ -59,12 +65,11 @@ export default function Assets() {
 
   useEffect(() => {
     if (!pendingOpenAssetId) return;
-    const found = assets.find((a) => a.id === pendingOpenAssetId);
-    if (!found) return;
-    setSelectedAsset(found);
+    if (!openAssetById) return;
+    setSelectedAsset(openAssetById);
     setIsModalOpen(true);
     setPendingOpenAssetId(null);
-  }, [assets, pendingOpenAssetId]);
+  }, [openAssetById, pendingOpenAssetId]);
 
 
   const handleAssetClick = (asset: Asset) => {

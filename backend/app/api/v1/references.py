@@ -1,6 +1,8 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func, or_
+from datetime import datetime
 from app.database import get_db
 from app.models.company import Company
 from app.models.device_type import DeviceType
@@ -9,7 +11,9 @@ from app.models.employee import Employee
 from app.models.employee import EmployeeStatus
 from app.models.vendor import Vendor
 from app.models.asset import Asset
-from app.models.asset import LocationType
+from app.models.asset import LocationType as AssetLocationType
+from app.models.movement import Movement
+from app.models.movement import LocationType as MovementLocationType
 from app.api.deps import get_current_active_user, require_admin
 from pydantic import BaseModel
 
@@ -50,6 +54,36 @@ class EmployeeResponse(BaseModel):
     phone: str
     position: Optional[str] = None
     status: str
+
+    class Config:
+        from_attributes = True
+
+
+class AssetMini(BaseModel):
+    id: int
+    inventory_number: str
+    vendor: str
+    model: str
+    serial_number: str
+
+    class Config:
+        from_attributes = True
+
+
+class EmployeeAssignedAssetResponse(BaseModel):
+    assigned_at: datetime
+    asset: AssetMini
+
+
+class EmployeeAssetHistoryEvent(BaseModel):
+    id: int
+    moved_at: datetime
+    action: str  # assigned | unassigned
+    from_type: str
+    from_id: int
+    to_type: str
+    to_id: int
+    asset: AssetMini
 
     class Config:
         from_attributes = True
@@ -375,7 +409,7 @@ def update_employee(
     # If trying to terminate: ensure no assigned assets
     if status_value == "terminated" and employee.status.value != "terminated":
         assigned = db.query(Asset).filter(
-            Asset.location_type == LocationType.employee,
+            Asset.location_type == AssetLocationType.employee,
             Asset.location_id == employee_id
         ).order_by(Asset.inventory_number.asc()).all()
         if assigned:
@@ -386,6 +420,7 @@ def update_employee(
                     "message": "Employee has assigned assets. Move them before termination.",
                     "employee_id": employee.id,
                     "employee_name": employee.name,
+                    "assigned_count": len(assigned),
                     "assets": [
                         {
                             "id": a.id,
@@ -422,6 +457,94 @@ def delete_employee(
     db.delete(employee)
     db.commit()
     return None
+
+
+@router.get("/employees/{employee_id}/assigned-assets", response_model=List[EmployeeAssignedAssetResponse])
+def get_employee_assigned_assets(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user)
+):
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+
+    assigned_assets = db.query(Asset).filter(
+        Asset.location_type == AssetLocationType.employee,
+        Asset.location_id == employee_id
+    )
+
+    # assigned_at = last movement where to employee, fallback to asset.created_at
+    assigned_subq = db.query(
+        Movement.asset_id.label("asset_id"),
+        func.max(Movement.moved_at).label("assigned_at")
+    ).filter(
+        Movement.to_type == MovementLocationType.employee,
+        Movement.to_id == employee_id
+    ).group_by(Movement.asset_id).subquery()
+
+    rows = db.query(Asset, assigned_subq.c.assigned_at).outerjoin(
+        assigned_subq, assigned_subq.c.asset_id == Asset.id
+    ).filter(
+        Asset.id.in_(assigned_assets.with_entities(Asset.id))
+    ).order_by(Asset.inventory_number.asc()).all()
+
+    resp: List[EmployeeAssignedAssetResponse] = []
+    for asset, assigned_at in rows:
+        resp.append(
+            EmployeeAssignedAssetResponse(
+                assigned_at=assigned_at or asset.created_at,
+                asset=AssetMini(
+                    id=asset.id,
+                    inventory_number=asset.inventory_number,
+                    vendor=asset.vendor,
+                    model=asset.model,
+                    serial_number=asset.serial_number,
+                ),
+            )
+        )
+    return resp
+
+
+@router.get("/employees/{employee_id}/asset-history", response_model=List[EmployeeAssetHistoryEvent])
+def get_employee_asset_history(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user)
+):
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+
+    q = db.query(Movement).join(Asset, Asset.id == Movement.asset_id).filter(
+        or_(
+            (Movement.from_type == MovementLocationType.employee) & (Movement.from_id == employee_id),
+            (Movement.to_type == MovementLocationType.employee) & (Movement.to_id == employee_id),
+        )
+    ).order_by(Movement.moved_at.desc())
+
+    events: List[EmployeeAssetHistoryEvent] = []
+    for m in q.all():
+        action = "assigned" if (m.to_type == MovementLocationType.employee and m.to_id == employee_id) else "unassigned"
+        events.append(
+            EmployeeAssetHistoryEvent(
+                id=m.id,
+                moved_at=m.moved_at,
+                action=action,
+                from_type=m.from_type.value,
+                from_id=m.from_id,
+                to_type=m.to_type.value,
+                to_id=m.to_id,
+                asset=AssetMini(
+                    id=m.asset.id,
+                    inventory_number=m.asset.inventory_number,
+                    vendor=m.asset.vendor,
+                    model=m.asset.model,
+                    serial_number=m.asset.serial_number,
+                ),
+            )
+        )
+    return events
 
 
 # Vendors

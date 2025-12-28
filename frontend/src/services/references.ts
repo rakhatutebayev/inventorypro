@@ -1,5 +1,5 @@
 import api from './api';
-import { Company, DeviceType, Warehouse, Employee, Vendor } from '../types';
+import { Company, DeviceType, Warehouse, Employee, Vendor, EmployeeAssignedAsset, EmployeeAssetHistoryEvent } from '../types';
 
 export const referencesService = {
   // Companies
@@ -80,6 +80,16 @@ export const referencesService = {
 
   async deleteEmployee(id: number): Promise<void> {
     await api.delete(`/references/employees/${id}`);
+  },
+
+  async getEmployeeAssignedAssets(employeeId: number): Promise<EmployeeAssignedAsset[]> {
+    const response = await api.get<EmployeeAssignedAsset[]>(`/references/employees/${employeeId}/assigned-assets`);
+    return response.data;
+  },
+
+  async getEmployeeAssetHistory(employeeId: number): Promise<EmployeeAssetHistoryEvent[]> {
+    const response = await api.get<EmployeeAssetHistoryEvent[]>(`/references/employees/${employeeId}/asset-history`);
+    return response.data;
   },
 
   // Vendors

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { referencesService } from '../services/references';
 import { movementsService } from '../services/movements';
-import { Asset, LocationType } from '../types';
+import { AssetMini, LocationType } from '../types';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import Modal from '../components/common/Modal';
@@ -405,12 +405,14 @@ interface ReferenceModalProps {
 function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<any>({});
-  const [terminationBlockAssets, setTerminationBlockAssets] = useState<Asset[] | null>(null);
   const [terminationBlockMessage, setTerminationBlockMessage] = useState<string | null>(null);
   const [isReassignModalOpen, setIsReassignModalOpen] = useState(false);
-  const [reassignAsset, setReassignAsset] = useState<Asset | null>(null);
+  const [reassignAsset, setReassignAsset] = useState<AssetMini | null>(null);
   const [reassignToType, setReassignToType] = useState<LocationType>(LocationType.warehouse);
   const [reassignToId, setReassignToId] = useState<number | ''>('');
+  const [isAssignedAssetsModalOpen, setIsAssignedAssetsModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [openedByTerminationCheck, setOpenedByTerminationCheck] = useState(false);
 
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
@@ -434,14 +436,13 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
 
   const moveMutation = useMutation({
     mutationFn: (data: { asset_id: number; to_type: LocationType; to_id: number }) => movementsService.create(data),
-    onSuccess: (_movement, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       setIsReassignModalOpen(false);
       setReassignAsset(null);
       setReassignToId('');
-      // remove moved asset from blocked list
-      setTerminationBlockAssets((prev) => (prev ? prev.filter((a) => a.id !== variables.asset_id) : prev));
+      queryClient.invalidateQueries({ queryKey: ['employee-assigned-assets', item?.id] });
     },
   });
 
@@ -510,15 +511,16 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
       referencesService.updateEmployee(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
-      setTerminationBlockAssets(null);
       setTerminationBlockMessage(null);
+      setOpenedByTerminationCheck(false);
       onClose();
     },
     onError: (err: any) => {
       const detail = err?.response?.data?.detail;
       if (detail?.code === 'EMPLOYEE_HAS_ASSETS') {
-        setTerminationBlockAssets(detail.assets || []);
         setTerminationBlockMessage(detail.message || 'Employee has assigned assets.');
+        setOpenedByTerminationCheck(true);
+        setIsAssignedAssetsModalOpen(true);
       }
     },
   });
@@ -543,8 +545,8 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (type === 'employees') {
-      setTerminationBlockAssets(null);
       setTerminationBlockMessage(null);
+      setOpenedByTerminationCheck(false);
     }
 
     if (type === 'companies') {
@@ -584,14 +586,52 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
   useEffect(() => {
     if (item) {
       setFormData(type === 'employees' ? normalizeEmployeeFormData(item) : item);
-      setTerminationBlockAssets(null);
       setTerminationBlockMessage(null);
+      setOpenedByTerminationCheck(false);
     } else {
       setFormData(type === 'employees' ? { status: 'working' } : {});
-      setTerminationBlockAssets(null);
       setTerminationBlockMessage(null);
+      setOpenedByTerminationCheck(false);
     }
   }, [item, type]);
+
+  // Reset nested modals when closing main modal
+  useEffect(() => {
+    if (isOpen) return;
+    setIsAssignedAssetsModalOpen(false);
+    setIsHistoryModalOpen(false);
+    setIsReassignModalOpen(false);
+    setReassignAsset(null);
+    setReassignToId('');
+    setOpenedByTerminationCheck(false);
+    setTerminationBlockMessage(null);
+  }, [isOpen]);
+
+  const formatDateOnly = (isoOrDate: string) => {
+    const d = new Date(isoOrDate);
+    return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
+  };
+
+  const getLocationLabel = (locType: LocationType, id: number) => {
+    if (locType === LocationType.employee) {
+      const emp = employees.find((e) => e.id === id);
+      return emp ? `${emp.name} (${emp.phone})` : `Employee #${id}`;
+    }
+    const wh = warehouses.find((w) => w.id === id);
+    return wh ? wh.name : `Warehouse #${id}`;
+  };
+
+  const { data: assignedAssets = [], isLoading: isLoadingAssigned } = useQuery({
+    queryKey: ['employee-assigned-assets', item?.id],
+    queryFn: () => referencesService.getEmployeeAssignedAssets(item!.id),
+    enabled: isOpen && type === 'employees' && !!item?.id && isAssignedAssetsModalOpen,
+  });
+
+  const { data: historyEvents = [], isLoading: isLoadingHistory } = useQuery({
+    queryKey: ['employee-asset-history', item?.id],
+    queryFn: () => referencesService.getEmployeeAssetHistory(item!.id),
+    enabled: isOpen && type === 'employees' && !!item?.id && isHistoryModalOpen,
+  });
 
   const getTitle = () => {
     if (!item) {
@@ -738,76 +778,28 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
               </div>
             </div>
 
-            {terminationBlockAssets && (
-              <div className="border border-yellow-200 bg-yellow-50 rounded-md p-3 space-y-2">
-                <div className="text-sm font-medium text-yellow-900">
-                  {terminationBlockMessage || 'Employee has assigned assets.'}
-                </div>
-                <div className="text-sm text-yellow-800">
-                  Move these assets away from the employee, then save again.
-                </div>
-
-                <div className="bg-white border border-yellow-200 rounded-md overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-max w-full table-auto">
-                      <thead className="bg-yellow-50 border-b border-yellow-200">
-                        <tr className="text-xs font-semibold text-yellow-900 uppercase tracking-wide">
-                          <th className="px-3 py-2 text-left whitespace-nowrap">Inventory</th>
-                          <th className="px-3 py-2 text-left whitespace-nowrap">Vendor + Model</th>
-                          <th className="px-3 py-2 text-left whitespace-nowrap">Serial</th>
-                          <th className="px-3 py-2 text-left whitespace-nowrap">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-yellow-200">
-                        {terminationBlockAssets.map((a) => (
-                          <tr key={a.id}>
-                            <td className="px-3 py-2 text-sm font-medium text-gray-900 whitespace-nowrap">
-                              {a.inventory_number}
-                            </td>
-                            <td className="px-3 py-2 text-sm text-gray-700 whitespace-nowrap">
-                              {a.vendor} {a.model}
-                            </td>
-                            <td className="px-3 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">
-                              {a.serial_number}
-                            </td>
-                            <td className="px-3 py-2 text-sm whitespace-nowrap">
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
-                                  onClick={() => {
-                                    sessionStorage.setItem('assets_open_id', String(a.id));
-                                    window.location.href = '/assets';
-                                  }}
-                                >
-                                  Open
-                                </button>
-                                <button
-                                  type="button"
-                                  className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
-                                  onClick={() => {
-                                    setReassignAsset(a);
-                                    setReassignToType(LocationType.warehouse);
-                                    setReassignToId('');
-                                    setIsReassignModalOpen(true);
-                                  }}
-                                >
-                                  Move
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {terminationBlockAssets.length === 0 && (
-                  <div className="text-sm text-green-700">
-                    All assets moved. You can save status as Terminated now.
-                  </div>
-                )}
+            {item && (
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => {
+                    setOpenedByTerminationCheck(false);
+                    setTerminationBlockMessage(null);
+                    setIsAssignedAssetsModalOpen(true);
+                  }}
+                >
+                  Assigned assets
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => setIsHistoryModalOpen(true)}
+                >
+                  History
+                </Button>
               </div>
             )}
           </>
@@ -919,6 +911,153 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
                 {(moveMutation.error as any)?.response?.data?.detail || 'Failed to move asset'}
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Assigned assets modal (also used when termination is blocked) */}
+      <Modal
+        isOpen={isAssignedAssetsModalOpen}
+        onClose={() => {
+          setIsAssignedAssetsModalOpen(false);
+          setOpenedByTerminationCheck(false);
+          setTerminationBlockMessage(null);
+        }}
+        title={`Assigned assets: ${item?.name || ''}`}
+        size="lg"
+      >
+        {openedByTerminationCheck && (
+          <div className="mb-3 border border-yellow-200 bg-yellow-50 text-yellow-900 rounded-md px-4 py-3 text-sm">
+            {terminationBlockMessage || 'Employee has assigned assets. Move them before termination.'}
+          </div>
+        )}
+
+        {isLoadingAssigned ? (
+          <div className="text-gray-500">Loading...</div>
+        ) : assignedAssets.length === 0 ? (
+          <div className="text-green-700 bg-green-50 border border-green-200 rounded-md px-4 py-3 text-sm">
+            No assigned assets. You can set status to <span className="font-medium">Terminated</span>.
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto max-h-[60vh]">
+              <table className="min-w-max w-full table-auto">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    <th className="px-4 py-2 text-left whitespace-nowrap">Assigned</th>
+                    <th className="px-4 py-2 text-left whitespace-nowrap">Inventory</th>
+                    <th className="px-4 py-2 text-left whitespace-nowrap">Vendor + Model</th>
+                    <th className="px-4 py-2 text-left whitespace-nowrap">Serial</th>
+                    <th className="px-4 py-2 text-left whitespace-nowrap">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {assignedAssets.map((row) => (
+                    <tr key={row.asset.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                        {formatDateOnly(row.assigned_at)}
+                      </td>
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900 whitespace-nowrap">
+                        {row.asset.inventory_number}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                        {row.asset.vendor} {row.asset.model}
+                      </td>
+                      <td className="px-4 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">
+                        {row.asset.serial_number}
+                      </td>
+                      <td className="px-4 py-2 text-sm whitespace-nowrap">
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
+                            onClick={() => {
+                              sessionStorage.setItem('assets_open_id', String(row.asset.id));
+                              window.location.href = '/assets';
+                            }}
+                          >
+                            Open
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
+                            onClick={() => {
+                              setReassignAsset(row.asset);
+                              setReassignToType(LocationType.warehouse);
+                              setReassignToId('');
+                              setIsReassignModalOpen(true);
+                            }}
+                          >
+                            Move
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Asset assignment history modal */}
+      <Modal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        title={`Asset history: ${item?.name || ''}`}
+        size="lg"
+      >
+        {isLoadingHistory ? (
+          <div className="text-gray-500">Loading...</div>
+        ) : historyEvents.length === 0 ? (
+          <div className="text-gray-500">No history</div>
+        ) : (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto max-h-[60vh]">
+              <table className="min-w-max w-full table-auto">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    <th className="px-4 py-2 text-left whitespace-nowrap">Date</th>
+                    <th className="px-4 py-2 text-left whitespace-nowrap">Action</th>
+                    <th className="px-4 py-2 text-left whitespace-nowrap">Inventory</th>
+                    <th className="px-4 py-2 text-left whitespace-nowrap">Vendor + Model</th>
+                    <th className="px-4 py-2 text-left whitespace-nowrap">Serial</th>
+                    <th className="px-4 py-2 text-left whitespace-nowrap">From</th>
+                    <th className="px-4 py-2 text-left whitespace-nowrap">To</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {historyEvents.map((ev) => (
+                    <tr key={ev.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                        {formatDateOnly(ev.moved_at)}
+                      </td>
+                      <td className="px-4 py-2 text-sm whitespace-nowrap">
+                        <span className={`px-2 py-1 rounded text-xs ${ev.action === 'assigned' ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-800'}`}>
+                          {ev.action === 'assigned' ? 'Assigned' : 'Unassigned'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900 whitespace-nowrap">
+                        {ev.asset.inventory_number}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                        {ev.asset.vendor} {ev.asset.model}
+                      </td>
+                      <td className="px-4 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">
+                        {ev.asset.serial_number}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                        {getLocationLabel(ev.from_type, ev.from_id)}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                        {getLocationLabel(ev.to_type, ev.to_id)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </Modal>

@@ -42,6 +42,30 @@ export interface Employee {
   status: "working" | "terminated";
 }
 
+export interface AssetMini {
+  id: number;
+  inventory_number: string;
+  vendor: string;
+  model: string;
+  serial_number: string;
+}
+
+export interface EmployeeAssignedAsset {
+  assigned_at: string;
+  asset: AssetMini;
+}
+
+export interface EmployeeAssetHistoryEvent {
+  id: number;
+  moved_at: string;
+  action: "assigned" | "unassigned";
+  from_type: LocationType;
+  from_id: number;
+  to_type: LocationType;
+  to_id: number;
+  asset: AssetMini;
+}
+
 export interface Vendor {
   id: number;
   name: string;
