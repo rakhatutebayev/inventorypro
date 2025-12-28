@@ -939,65 +939,110 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
             No assigned assets. You can set status to <span className="font-medium">Terminated</span>.
           </div>
         ) : (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto max-h-[60vh]">
-              <table className="min-w-max w-full table-auto">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    <th className="px-4 py-2 text-left whitespace-nowrap">Assigned</th>
-                    <th className="px-4 py-2 text-left whitespace-nowrap">Inventory</th>
-                    <th className="px-4 py-2 text-left whitespace-nowrap">Vendor + Model</th>
-                    <th className="px-4 py-2 text-left whitespace-nowrap">Serial</th>
-                    <th className="px-4 py-2 text-left whitespace-nowrap">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {assignedAssets.map((row) => (
-                    <tr key={row.asset.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
-                        {formatDateOnly(row.assigned_at)}
-                      </td>
-                      <td className="px-4 py-2 text-sm font-medium text-gray-900 whitespace-nowrap">
-                        {row.asset.inventory_number}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
-                        {row.asset.vendor} {row.asset.model}
-                      </td>
-                      <td className="px-4 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">
-                        {row.asset.serial_number}
-                      </td>
-                      <td className="px-4 py-2 text-sm whitespace-nowrap">
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
-                            onClick={() => {
-                              sessionStorage.setItem('assets_open_id', String(row.asset.id));
-                              window.location.href = '/assets';
-                            }}
-                          >
-                            Open
-                          </button>
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
-                            onClick={() => {
-                              setReassignAsset(row.asset);
-                              setReassignToType(LocationType.warehouse);
-                              setReassignToId('');
-                              setIsReassignModalOpen(true);
-                            }}
-                          >
-                            Move
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <>
+            {/* Mobile: stacked list */}
+            <div className="sm:hidden space-y-2">
+              {assignedAssets.map((row) => (
+                <div key={row.asset.id} className="border border-gray-200 rounded-lg p-3 bg-white">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-gray-500">{formatDateOnly(row.assigned_at)}</div>
+                    <div className="text-sm font-semibold text-gray-900">{row.asset.inventory_number}</div>
+                  </div>
+                  <div className="text-sm text-gray-700 mt-1">
+                    {row.asset.vendor} {row.asset.model}
+                  </div>
+                  <div className="text-xs font-mono text-gray-600 mt-1 break-all">
+                    {row.asset.serial_number}
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      type="button"
+                      className="flex-1 px-3 py-2 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                      onClick={() => {
+                        sessionStorage.setItem('assets_open_id', String(row.asset.id));
+                        window.location.href = '/assets';
+                      }}
+                    >
+                      Open
+                    </button>
+                    <button
+                      type="button"
+                      className="flex-1 px-3 py-2 text-sm rounded border border-gray-300 hover:bg-gray-50"
+                      onClick={() => {
+                        setReassignAsset(row.asset);
+                        setReassignToType(LocationType.warehouse);
+                        setReassignToId('');
+                        setIsReassignModalOpen(true);
+                      }}
+                    >
+                      Move
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
+
+            {/* Desktop/tablet: table */}
+            <div className="hidden sm:block bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto max-h-[60vh]">
+                <table className="min-w-max w-full table-auto">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      <th className="px-4 py-2 text-left whitespace-nowrap">Assigned</th>
+                      <th className="px-4 py-2 text-left whitespace-nowrap">Inventory</th>
+                      <th className="px-4 py-2 text-left whitespace-nowrap">Vendor + Model</th>
+                      <th className="px-4 py-2 text-left whitespace-nowrap">Serial</th>
+                      <th className="px-4 py-2 text-left whitespace-nowrap">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {assignedAssets.map((row) => (
+                      <tr key={row.asset.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                          {formatDateOnly(row.assigned_at)}
+                        </td>
+                        <td className="px-4 py-2 text-sm font-medium text-gray-900 whitespace-nowrap">
+                          {row.asset.inventory_number}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                          {row.asset.vendor} {row.asset.model}
+                        </td>
+                        <td className="px-4 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">
+                          {row.asset.serial_number}
+                        </td>
+                        <td className="px-4 py-2 text-sm whitespace-nowrap">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
+                              onClick={() => {
+                                sessionStorage.setItem('assets_open_id', String(row.asset.id));
+                                window.location.href = '/assets';
+                              }}
+                            >
+                              Open
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
+                              onClick={() => {
+                                setReassignAsset(row.asset);
+                                setReassignToType(LocationType.warehouse);
+                                setReassignToId('');
+                                setIsReassignModalOpen(true);
+                              }}
+                            >
+                              Move
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
         )}
       </Modal>
 
@@ -1015,7 +1060,7 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
         ) : (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <div className="overflow-x-auto max-h-[60vh]">
-              <table className="min-w-max w-full table-auto">
+              <table className="min-w-max w-full table-auto hidden sm:table">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
                     <th className="px-4 py-2 text-left whitespace-nowrap">Date</th>
@@ -1057,6 +1102,27 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
                   ))}
                 </tbody>
               </table>
+              <div className="sm:hidden space-y-2 p-3">
+                {historyEvents.map((ev) => (
+                  <div key={ev.id} className="border border-gray-200 rounded-lg p-3 bg-white">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-500">{formatDateOnly(ev.moved_at)}</div>
+                      <span className={`px-2 py-1 rounded text-xs ${ev.action === 'assigned' ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-800'}`}>
+                        {ev.action === 'assigned' ? 'Assigned' : 'Unassigned'}
+                      </span>
+                    </div>
+                    <div className="text-sm font-semibold text-gray-900 mt-1">{ev.asset.inventory_number}</div>
+                    <div className="text-sm text-gray-700">{ev.asset.vendor} {ev.asset.model}</div>
+                    <div className="text-xs font-mono text-gray-600 break-all">{ev.asset.serial_number}</div>
+                    <div className="text-sm text-gray-700 mt-2">
+                      <span className="text-gray-500">From:</span> {getLocationLabel(ev.from_type, ev.from_id)}
+                    </div>
+                    <div className="text-sm text-gray-700">
+                      <span className="text-gray-500">To:</span> {getLocationLabel(ev.to_type, ev.to_id)}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

@@ -31,11 +31,11 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black bg-opacity-50"
       onClick={onClose}
     >
       <div
-        className={`bg-white rounded-lg shadow-xl ${sizeClasses[size]} w-full mx-4 max-h-[90vh] overflow-y-auto`}
+        className={`bg-white shadow-xl ${sizeClasses[size]} w-full mx-0 sm:mx-4 rounded-t-lg sm:rounded-lg h-[92vh] sm:h-auto max-h-[92vh] overflow-y-auto`}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
