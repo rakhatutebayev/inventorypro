@@ -984,33 +984,33 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
 
             {/* Desktop/tablet: table */}
             <div className="hidden sm:block bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto max-h-[60vh]">
-                <table className="min-w-max w-full table-auto">
+              <div className="max-h-[60vh] overflow-y-auto">
+                <table className="w-full table-fixed">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                      <th className="px-4 py-2 text-left whitespace-nowrap">Assigned</th>
-                      <th className="px-4 py-2 text-left whitespace-nowrap">Inventory</th>
-                      <th className="px-4 py-2 text-left whitespace-nowrap">Vendor + Model</th>
-                      <th className="px-4 py-2 text-left whitespace-nowrap">Serial</th>
-                      <th className="px-4 py-2 text-left whitespace-nowrap">Actions</th>
+                      <th className="px-4 py-2 text-left w-28">Assigned</th>
+                      <th className="px-4 py-2 text-left w-40">Inventory</th>
+                      <th className="px-4 py-2 text-left">Vendor + Model</th>
+                      <th className="px-4 py-2 text-left">Serial</th>
+                      <th className="px-4 py-2 text-left w-32">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {assignedAssets.map((row) => (
                       <tr key={row.asset.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                        <td className="px-4 py-2 text-sm text-gray-700">
                           {formatDateOnly(row.assigned_at)}
                         </td>
-                        <td className="px-4 py-2 text-sm font-medium text-gray-900 whitespace-nowrap">
+                        <td className="px-4 py-2 text-sm font-medium text-gray-900">
                           {row.asset.inventory_number}
                         </td>
-                        <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                        <td className="px-4 py-2 text-sm text-gray-700 break-words">
                           {row.asset.vendor} {row.asset.model}
                         </td>
-                        <td className="px-4 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">
+                        <td className="px-4 py-2 text-sm font-mono text-gray-600 break-all">
                           {row.asset.serial_number}
                         </td>
-                        <td className="px-4 py-2 text-sm whitespace-nowrap">
+                        <td className="px-4 py-2 text-sm">
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -1059,43 +1059,43 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
           <div className="text-gray-500">No history</div>
         ) : (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto max-h-[60vh]">
-              <table className="min-w-max w-full table-auto hidden sm:table">
+            <div className="max-h-[60vh] overflow-y-auto">
+              <table className="w-full table-fixed hidden sm:table">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    <th className="px-4 py-2 text-left whitespace-nowrap">Date</th>
-                    <th className="px-4 py-2 text-left whitespace-nowrap">Action</th>
-                    <th className="px-4 py-2 text-left whitespace-nowrap">Inventory</th>
-                    <th className="px-4 py-2 text-left whitespace-nowrap">Vendor + Model</th>
-                    <th className="px-4 py-2 text-left whitespace-nowrap">Serial</th>
-                    <th className="px-4 py-2 text-left whitespace-nowrap">From</th>
-                    <th className="px-4 py-2 text-left whitespace-nowrap">To</th>
+                    <th className="px-4 py-2 text-left w-28">Date</th>
+                    <th className="px-4 py-2 text-left w-28">Action</th>
+                    <th className="px-4 py-2 text-left w-40">Inventory</th>
+                    <th className="px-4 py-2 text-left">Vendor + Model</th>
+                    <th className="px-4 py-2 text-left">Serial</th>
+                    <th className="px-4 py-2 text-left">From</th>
+                    <th className="px-4 py-2 text-left">To</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {historyEvents.map((ev) => (
                     <tr key={ev.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                      <td className="px-4 py-2 text-sm text-gray-700">
                         {formatDateOnly(ev.moved_at)}
                       </td>
-                      <td className="px-4 py-2 text-sm whitespace-nowrap">
+                      <td className="px-4 py-2 text-sm">
                         <span className={`px-2 py-1 rounded text-xs ${ev.action === 'assigned' ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-800'}`}>
                           {ev.action === 'assigned' ? 'Assigned' : 'Unassigned'}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-sm font-medium text-gray-900 whitespace-nowrap">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900">
                         {ev.asset.inventory_number}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                      <td className="px-4 py-2 text-sm text-gray-700 break-words">
                         {ev.asset.vendor} {ev.asset.model}
                       </td>
-                      <td className="px-4 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">
+                      <td className="px-4 py-2 text-sm font-mono text-gray-600 break-all">
                         {ev.asset.serial_number}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                      <td className="px-4 py-2 text-sm text-gray-700 break-words">
                         {getLocationLabel(ev.from_type, ev.from_id)}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                      <td className="px-4 py-2 text-sm text-gray-700 break-words">
                         {getLocationLabel(ev.to_type, ev.to_id)}
                       </td>
                     </tr>
