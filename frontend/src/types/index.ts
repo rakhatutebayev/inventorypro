@@ -39,6 +39,7 @@ export interface Employee {
   name: string;
   phone: string;
   position?: string;
+  status: "working" | "terminated";
 }
 
 export interface Vendor {

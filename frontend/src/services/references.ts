@@ -68,12 +68,12 @@ export const referencesService = {
     return response.data;
   },
 
-  async createEmployee(data: { name: string; phone: string; position?: string }): Promise<Employee> {
+  async createEmployee(data: { name: string; phone: string; position?: string; status?: 'working' | 'terminated' }): Promise<Employee> {
     const response = await api.post<Employee>('/references/employees', data);
     return response.data;
   },
 
-  async updateEmployee(id: number, data: { name: string; phone: string; position?: string }): Promise<Employee> {
+  async updateEmployee(id: number, data: { name: string; phone: string; position?: string; status?: 'working' | 'terminated' }): Promise<Employee> {
     const response = await api.put<Employee>(`/references/employees/${id}`, data);
     return response.data;
   },

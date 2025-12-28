@@ -6,8 +6,10 @@ from app.models.company import Company
 from app.models.device_type import DeviceType
 from app.models.warehouse import Warehouse
 from app.models.employee import Employee
+from app.models.employee import EmployeeStatus
 from app.models.vendor import Vendor
 from app.models.asset import Asset
+from app.models.asset import LocationType
 from app.api.deps import get_current_active_user, require_admin
 from pydantic import BaseModel
 
@@ -47,6 +49,7 @@ class EmployeeResponse(BaseModel):
     name: str
     phone: str
     position: Optional[str] = None
+    status: str
 
     class Config:
         from_attributes = True
@@ -80,6 +83,7 @@ class EmployeeCreate(BaseModel):
     name: str
     phone: str
     position: Optional[str] = None
+    status: Optional[str] = "working"
 
 
 class VendorCreate(BaseModel):
@@ -329,10 +333,14 @@ def create_employee(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Employee with this phone number already exists"
         )
+    status_value = employee_in.status or "working"
+    if status_value not in ("working", "terminated"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid employee status")
     employee = Employee(
         name=employee_in.name,
         phone=employee_in.phone,
-        position=employee_in.position
+        position=employee_in.position,
+        status=EmployeeStatus(status_value)
     )
     db.add(employee)
     db.commit()
@@ -359,9 +367,41 @@ def update_employee(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Employee with this phone number already exists"
         )
+
+    status_value = employee_in.status or employee.status.value
+    if status_value not in ("working", "terminated"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid employee status")
+
+    # If trying to terminate: ensure no assigned assets
+    if status_value == "terminated" and employee.status.value != "terminated":
+        assigned = db.query(Asset).filter(
+            Asset.location_type == LocationType.employee,
+            Asset.location_id == employee_id
+        ).order_by(Asset.inventory_number.asc()).all()
+        if assigned:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "EMPLOYEE_HAS_ASSETS",
+                    "message": "Employee has assigned assets. Move them before termination.",
+                    "employee_id": employee.id,
+                    "employee_name": employee.name,
+                    "assets": [
+                        {
+                            "id": a.id,
+                            "inventory_number": a.inventory_number,
+                            "vendor": a.vendor,
+                            "model": a.model,
+                            "serial_number": a.serial_number,
+                        }
+                        for a in assigned
+                    ],
+                },
+            )
     employee.name = employee_in.name
     employee.phone = employee_in.phone
     employee.position = employee_in.position
+    employee.status = EmployeeStatus(status_value)
     db.commit()
     db.refresh(employee)
     return employee

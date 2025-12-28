@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { referencesService } from '../services/references';
+import { movementsService } from '../services/movements';
+import { Asset, LocationType } from '../types';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import Modal from '../components/common/Modal';
@@ -243,6 +245,15 @@ export default function References() {
               <div className="flex items-center gap-6">
                 <span className="font-semibold text-gray-900 min-w-[200px]">{employee.name}</span>
                 <span className="text-gray-700 min-w-[100px]">{employee.phone}</span>
+                <span
+                  className={`text-xs px-2 py-1 rounded ${
+                    employee.status === 'working'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-gray-200 text-gray-800'
+                  }`}
+                >
+                  {employee.status === 'working' ? 'Working' : 'Terminated'}
+                </span>
                 {employee.position && (
                   <span className="text-sm text-gray-500">{employee.position}</span>
                 )}
@@ -394,6 +405,45 @@ interface ReferenceModalProps {
 function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<any>({});
+  const [terminationBlockAssets, setTerminationBlockAssets] = useState<Asset[] | null>(null);
+  const [terminationBlockMessage, setTerminationBlockMessage] = useState<string | null>(null);
+  const [isReassignModalOpen, setIsReassignModalOpen] = useState(false);
+  const [reassignAsset, setReassignAsset] = useState<Asset | null>(null);
+  const [reassignToType, setReassignToType] = useState<LocationType>(LocationType.warehouse);
+  const [reassignToId, setReassignToId] = useState<number | ''>('');
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: () => referencesService.getWarehouses(),
+    enabled: isOpen,
+  });
+
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => referencesService.getEmployees(),
+    enabled: isOpen,
+  });
+
+  const normalizeEmployeeFormData = (data: any) => {
+    if (!data) return data;
+    if (typeof data.status === 'undefined' || data.status === null || data.status === '') {
+      return { ...data, status: 'working' };
+    }
+    return data;
+  };
+
+  const moveMutation = useMutation({
+    mutationFn: (data: { asset_id: number; to_type: LocationType; to_id: number }) => movementsService.create(data),
+    onSuccess: (_movement, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setIsReassignModalOpen(false);
+      setReassignAsset(null);
+      setReassignToId('');
+      // remove moved asset from blocked list
+      setTerminationBlockAssets((prev) => (prev ? prev.filter((a) => a.id !== variables.asset_id) : prev));
+    },
+  });
 
   const createCompanyMutation = useMutation({
     mutationFn: (data: { code: string; name: string }) => referencesService.createCompany(data),
@@ -447,7 +497,7 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
   });
 
   const createEmployeeMutation = useMutation({
-    mutationFn: (data: { name: string; phone: string; position?: string }) =>
+    mutationFn: (data: { name: string; phone: string; position?: string; status?: 'working' | 'terminated' }) =>
       referencesService.createEmployee(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
@@ -456,11 +506,20 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
   });
 
   const updateEmployeeMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { name: string; phone: string; position?: string } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { name: string; phone: string; position?: string; status?: 'working' | 'terminated' } }) =>
       referencesService.updateEmployee(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setTerminationBlockAssets(null);
+      setTerminationBlockMessage(null);
       onClose();
+    },
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail;
+      if (detail?.code === 'EMPLOYEE_HAS_ASSETS') {
+        setTerminationBlockAssets(detail.assets || []);
+        setTerminationBlockMessage(detail.message || 'Employee has assigned assets.');
+      }
     },
   });
 
@@ -483,6 +542,10 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (type === 'employees') {
+      setTerminationBlockAssets(null);
+      setTerminationBlockMessage(null);
+    }
 
     if (type === 'companies') {
       if (item) {
@@ -520,11 +583,15 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
   // Initialize form data when item changes
   useEffect(() => {
     if (item) {
-      setFormData(item);
+      setFormData(type === 'employees' ? normalizeEmployeeFormData(item) : item);
+      setTerminationBlockAssets(null);
+      setTerminationBlockMessage(null);
     } else {
-      setFormData({});
+      setFormData(type === 'employees' ? { status: 'working' } : {});
+      setTerminationBlockAssets(null);
+      setTerminationBlockMessage(null);
     }
-  }, [item]);
+  }, [item, type]);
 
   const getTitle = () => {
     if (!item) {
@@ -551,7 +618,8 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
   const title = getTitle();
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title} size="md">
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title={title} size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
         {type === 'companies' && (
           <>
@@ -655,6 +723,93 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
                 onChange={(e) => setFormData({ ...formData, position: e.target.value })}
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select
+                value={formData.status || 'working'}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="working">Working</option>
+                <option value="terminated">Terminated</option>
+              </select>
+              <div className="text-xs text-gray-500 mt-1">
+                If you set to Terminated, employee must have no assigned assets.
+              </div>
+            </div>
+
+            {terminationBlockAssets && (
+              <div className="border border-yellow-200 bg-yellow-50 rounded-md p-3 space-y-2">
+                <div className="text-sm font-medium text-yellow-900">
+                  {terminationBlockMessage || 'Employee has assigned assets.'}
+                </div>
+                <div className="text-sm text-yellow-800">
+                  Move these assets away from the employee, then save again.
+                </div>
+
+                <div className="bg-white border border-yellow-200 rounded-md overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-max w-full table-auto">
+                      <thead className="bg-yellow-50 border-b border-yellow-200">
+                        <tr className="text-xs font-semibold text-yellow-900 uppercase tracking-wide">
+                          <th className="px-3 py-2 text-left whitespace-nowrap">Inventory</th>
+                          <th className="px-3 py-2 text-left whitespace-nowrap">Vendor + Model</th>
+                          <th className="px-3 py-2 text-left whitespace-nowrap">Serial</th>
+                          <th className="px-3 py-2 text-left whitespace-nowrap">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-yellow-200">
+                        {terminationBlockAssets.map((a) => (
+                          <tr key={a.id}>
+                            <td className="px-3 py-2 text-sm font-medium text-gray-900 whitespace-nowrap">
+                              {a.inventory_number}
+                            </td>
+                            <td className="px-3 py-2 text-sm text-gray-700 whitespace-nowrap">
+                              {a.vendor} {a.model}
+                            </td>
+                            <td className="px-3 py-2 text-sm font-mono text-gray-600 whitespace-nowrap">
+                              {a.serial_number}
+                            </td>
+                            <td className="px-3 py-2 text-sm whitespace-nowrap">
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
+                                  onClick={() => {
+                                    sessionStorage.setItem('assets_open_id', String(a.id));
+                                    window.location.href = '/assets';
+                                  }}
+                                >
+                                  Open
+                                </button>
+                                <button
+                                  type="button"
+                                  className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
+                                  onClick={() => {
+                                    setReassignAsset(a);
+                                    setReassignToType(LocationType.warehouse);
+                                    setReassignToId('');
+                                    setIsReassignModalOpen(true);
+                                  }}
+                                >
+                                  Move
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {terminationBlockAssets.length === 0 && (
+                  <div className="text-sm text-green-700">
+                    All assets moved. You can save status as Terminated now.
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -681,7 +836,93 @@ function ReferenceModal({ isOpen, onClose, type, item }: ReferenceModalProps) {
           </Button>
         </div>
       </form>
-    </Modal>
+      </Modal>
+
+      <Modal
+        isOpen={isReassignModalOpen}
+        onClose={() => {
+          setIsReassignModalOpen(false);
+          setReassignAsset(null);
+          setReassignToId('');
+        }}
+        title={`Move Asset: ${reassignAsset?.inventory_number || ''}`}
+        size="md"
+      >
+        {reassignAsset && (
+          <div className="space-y-4">
+            <div className="text-sm text-gray-600">
+              <div className="font-medium text-gray-900">
+                {reassignAsset.vendor} {reassignAsset.model}
+              </div>
+              <div className="font-mono text-xs text-gray-600">{reassignAsset.serial_number}</div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Move To</label>
+              <select
+                value={reassignToType}
+                onChange={(e) => {
+                  setReassignToType(e.target.value as LocationType);
+                  setReassignToId('');
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value={LocationType.warehouse}>Warehouse</option>
+                <option value={LocationType.employee}>Employee</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {reassignToType === LocationType.employee ? 'Select Employee' : 'Select Warehouse'}
+              </label>
+              <select
+                value={reassignToId}
+                onChange={(e) => setReassignToId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Select...</option>
+                {reassignToType === LocationType.employee
+                  ? employees
+                      .filter((e) => e.id !== item?.id)
+                      .map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.name} ({emp.phone})
+                        </option>
+                      ))
+                  : warehouses.map((wh) => (
+                      <option key={wh.id} value={wh.id}>
+                        {wh.name}
+                      </option>
+                    ))}
+              </select>
+            </div>
+
+            <Button
+              variant="primary"
+              fullWidth
+              disabled={!reassignToId || moveMutation.isPending}
+              onClick={() => {
+                if (!reassignToId) return;
+                moveMutation.mutate({
+                  asset_id: reassignAsset.id,
+                  to_type: reassignToType,
+                  to_id: Number(reassignToId),
+                });
+              }}
+            >
+              {moveMutation.isPending ? 'Moving...' : 'Move'}
+            </Button>
+
+            {moveMutation.isError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+                {(moveMutation.error as any)?.response?.data?.detail || 'Failed to move asset'}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }
 

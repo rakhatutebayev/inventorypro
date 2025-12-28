@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { assetsService } from '../services/assets';
 import { printService } from '../services/print';
@@ -24,6 +24,18 @@ export default function Assets() {
 
   const queryClient = useQueryClient();
 
+  const [pendingOpenAssetId, setPendingOpenAssetId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem('assets_open_id');
+    if (!raw) return;
+    const id = Number(raw);
+    if (!Number.isNaN(id)) {
+      setPendingOpenAssetId(id);
+    }
+    sessionStorage.removeItem('assets_open_id');
+  }, []);
+
   const { data: assets = [], isLoading } = useQuery({
     queryKey: ['assets', search],
     queryFn: () => assetsService.getAll({ search, limit: 100 }),
@@ -44,6 +56,15 @@ export default function Assets() {
     queryFn: () => movementsService.getByAssetId(selectedAsset!.id),
     enabled: !!selectedAsset?.id && isHistoryModalOpen,
   });
+
+  useEffect(() => {
+    if (!pendingOpenAssetId) return;
+    const found = assets.find((a) => a.id === pendingOpenAssetId);
+    if (!found) return;
+    setSelectedAsset(found);
+    setIsModalOpen(true);
+    setPendingOpenAssetId(null);
+  }, [assets, pendingOpenAssetId]);
 
 
   const handleAssetClick = (asset: Asset) => {

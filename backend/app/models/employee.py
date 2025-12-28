@@ -1,5 +1,11 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, Enum as SQLEnum
 from app.database import Base
+import enum
+
+
+class EmployeeStatus(str, enum.Enum):
+    working = "working"
+    terminated = "terminated"
 
 
 class Employee(Base):
@@ -9,5 +15,6 @@ class Employee(Base):
     name = Column(String, nullable=False)
     phone = Column(String(3), unique=True, nullable=False, index=True)
     position = Column(String, nullable=True)
+    status = Column(SQLEnum(EmployeeStatus, name="employeestatus"), nullable=False, index=True, default=EmployeeStatus.working)
 
 
